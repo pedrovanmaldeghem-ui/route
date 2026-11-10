@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inloggen · Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --accent:#1f5f8b; --good:#2d7d46; --bad:#c0392b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; --accent:#6ab0e0; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px }
+.kaartje { max-width:420px; margin:24px auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px }
+h1 { font-size:20px; margin:0 0 4px } .muted { color:var(--muted); font-size:14px }
+label { display:block; font-size:13px; color:var(--muted); margin:10px 0 3px }
+input { width:100%; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit }
+button { width:100%; margin-top:14px; font:600 15px system-ui; padding:11px; border-radius:6px; border:0; background:var(--good); color:#fff; cursor:pointer }
+.fout { color:var(--bad); font-size:14px; margin-top:8px } .ok { color:var(--good); font-size:14px; margin-top:8px }
+.tabs { display:flex; gap:6px; margin:14px 0 4px } .tabs a { flex:1; text-align:center; padding:7px; border-radius:6px; border:1px solid var(--line); color:var(--fg); text-decoration:none; font-size:14px }
+.tabs a.aan { background:var(--accent); border-color:var(--accent); color:#fff }
+</style>
+</head>
+<body>
+<div class="kaartje">
+  <h1>Eigennet</h1>
+  <p class="muted" style="margin:0">Zelf geplande netten, omlopen en de boordcomputer.</p>
+  <div class="tabs"><a href="#" id="tIn" class="aan">Inloggen</a><a href="#" id="tReg">Account aanvragen</a></div>
+  <form id="fIn">
+    <label for="e1">E-mailadres</label><input id="e1" type="email" autocomplete="username" required>
+    <label for="w1">Wachtwoord</label><input id="w1" type="password" autocomplete="current-password" required>
+    <button type="submit">Inloggen</button>
+    <div id="m1"></div>
+  </form>
+  <form id="fReg" hidden>
+    <label for="vn">Voornaam</label><input id="vn" autocomplete="given-name" required>
+    <label for="nm">Naam</label><input id="nm" autocomplete="family-name" required>
+    <label for="e2">E-mailadres</label><input id="e2" type="email" autocomplete="username" required>
+    <label for="w2">Wachtwoord (minstens 8 tekens)</label><input id="w2" type="password" autocomplete="new-password" minlength="8" required>
+    <button type="submit">Account aanvragen</button>
+    <div id="m2"></div>
+    <p class="muted">De beheerder keurt je account goed. Daarna kan je inloggen.</p>
+  </form>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const post = async (url, body) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); let d = {}; try { d = await r.json(); } catch {} return { ok: r.ok, ...d }; };
+const terug = (() => { const t = new URLSearchParams(location.search).get("terug") || "/"; return /^\/(?!\/)/.test(t) ? t : "/"; })();
+const kies = (reg) => { $("fIn").hidden = reg; $("fReg").hidden = !reg; $("tIn").classList.toggle("aan", !reg); $("tReg").classList.toggle("aan", reg); };
+$("tIn").onclick = (e) => { e.preventDefault(); kies(false); };
+$("tReg").onclick = (e) => { e.preventDefault(); kies(true); };
+$("fIn").onsubmit = async (e) => {
+  e.preventDefault(); $("m1").className = ""; $("m1").textContent = "";
+  const r = await post("/api/login", { email: $("e1").value, wachtwoord: $("w1").value });
+  if (r.ok) location.href = terug; else { $("m1").className = "fout"; $("m1").textContent = r.fout || "Inloggen mislukt."; }
+};
+$("fReg").onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await post("/api/register", { voornaam: $("vn").value, naam: $("nm").value, email: $("e2").value, wachtwoord: $("w2").value });
+  $("m2").className = r.ok ? "ok" : "fout";
+  $("m2").textContent = r.ok ? "Aangevraagd. Je kan inloggen zodra de beheerder je account goedkeurt." : (r.fout || "Aanvragen mislukt.");
+};
+</script>
+</body>
+</html>

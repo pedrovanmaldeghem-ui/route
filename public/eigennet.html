@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Net-bouwer · Eigennet</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --badge:#1f5f8b; --good:#2d7d46; --bad:#c0392b; --accent:#f2b705; --heen:#1f5f8b; --terug:#e0772e; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; } }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px }
+.wrap { max-width:980px; margin:0 auto }
+h1 { font-size:20px; margin:0 0 4px } h2 { font-size:16px; margin:16px 0 8px }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:14px }
+label { font-size:13px; color:var(--muted); display:block; margin:8px 0 3px }
+input, select { padding:9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; max-width:100% }
+input[type=number] { width:90px } input[type=time] { width:120px }
+button { font:600 13px system-ui; padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; margin:2px 4px 2px 0 }
+button.go { background:var(--good); color:#fff; border-color:var(--good) } button.no { background:var(--bad); color:#fff; border-color:var(--bad) }
+button.accent { background:var(--accent); color:#1a1300; border-color:var(--accent) }
+button.aan { outline:2px solid var(--accent); outline-offset:1px }
+.muted { color:var(--muted); font-size:14px } a { color:var(--badge) }
+#kaart { height:440px; border-radius:8px; border:1px solid var(--line); margin-top:6px }
+.lengtebadge { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 9px; font:600 12px system-ui; color:var(--fg); box-shadow:0 1px 4px rgba(0,0,0,.25); white-space:nowrap }
+.lengtebadge .h { color:var(--heen) } .lengtebadge .t { color:var(--terug) }
+.zoekwrap { position:relative; flex:1; min-width:180px }
+.zoeksug { position:absolute; left:0; right:0; top:100%; z-index:1000; background:var(--panel); border:1px solid var(--line); border-radius:0 0 6px 6px; max-height:220px; overflow:auto; box-shadow:0 4px 12px rgba(0,0,0,.2) }
+.zoeksug div { padding:7px 9px; cursor:pointer; font-size:14px; border-bottom:1px solid var(--line) }
+.zoeksug div:hover, .zoeksug div.sel { background:var(--bg) }
+.endpt { font-weight:800; border:0; color:#fff; border-radius:4px; padding:0 4px } .endpt.start { background:var(--good) } .endpt.eind { background:var(--bad) }
+#kaart.vol { position:fixed; inset:0; height:auto !important; width:auto; z-index:3000; border-radius:0; margin:0 }
+.volknop { width:30px; height:30px; line-height:28px; text-align:center; font-size:16px; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25) }
+.haltepop input { width:160px; padding:5px 6px; border:1px solid var(--line); border-radius:5px; font:inherit; background:var(--bg); color:var(--fg) }
+.haltepop button { font:600 12px system-ui; padding:5px 9px; border-radius:5px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer }
+.haltepop .pweg { color:var(--bad); border-color:var(--bad) }
+.ghostpt { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.55); border:2px dashed #555; box-sizing:border-box; cursor:crosshair }
+.busicon { font-size:19px; line-height:22px; text-align:center; filter:drop-shadow(0 1px 1px rgba(0,0,0,.4)) }
+.leaflet-tooltip.simtip { background:#1f5f8b; color:#fff; border:0; font-weight:700; font-size:11px; padding:1px 5px }
+#simTijd { accent-color:var(--badge) }
+table { border-collapse:collapse; width:100%; font-size:14px; margin-top:8px } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:middle } th { font-size:12px; text-transform:uppercase; color:var(--muted) }
+td input { padding:5px 6px } .n { font-variant-numeric:tabular-nums }
+.rij { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end }
+.rij > div { display:flex; flex-direction:column }
+.dagen label { display:inline-flex; align-items:center; gap:4px; margin-right:10px; color:var(--fg); font-size:14px }
+.fout { color:var(--bad); font-weight:600; min-height:1px; margin:6px 0 }
+.ok { color:var(--good); font-weight:600 }
+.omloopblok { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:10px }
+.omloopkop { font-weight:700; margin-bottom:4px }
+.saldo { font-size:13px; color:var(--muted) }
+.tabrij { display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-bottom:8px }
+.puntheen { background:var(--heen) } .puntterug { background:var(--terug) }
+.leaflet-tooltip.htip { background:var(--heen); color:#fff; border:0; font-weight:700 }
+.leaflet-tooltip.ttip { background:var(--terug); color:#fff; border:0; font-weight:700 }
+.vormpt { width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #333; box-sizing:border-box; cursor:move }
+.stelpt { width:16px; height:16px; background:#111; border:2px solid #fff; box-shadow:0 0 0 1px #111; box-sizing:border-box; cursor:move }
+.db-ritkop.db-dood { color:var(--muted); font-style:italic; font-weight:600 }
+.waarschuw { color:var(--bad); font-weight:700 }
+.legenda span { display:inline-flex; align-items:center; gap:5px; margin-right:14px; font-size:13px }
+.dot { width:12px; height:12px; border-radius:50%; display:inline-block }
+/* Dienstblad in HASTUS-stijl */
+.db-vel { border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-top:14px; break-inside:avoid }
+.db-titel { font-weight:800; font-size:17px }
+.db-sub, .db-dagen { font-size:13px; color:var(--muted); margin-top:2px }
+.db-ritkop { font-weight:700; font-size:13px; margin:12px 0 2px; padding-top:8px; border-top:1px solid var(--line) }
+.db-ritkop input.ritnr { width:70px; padding:2px 5px; font-weight:700 }
+.db-rij, .db-pauze { display:flex; align-items:baseline; gap:6px; font-size:14px; line-height:1.55 }
+.db-pauze { font-size:13px; color:var(--muted); margin:3px 0 }
+.db-naam { white-space:nowrap }
+.db-rij.rand .db-naam { font-weight:800 }
+.db-leader { flex:1; border-bottom:1px dotted var(--muted); transform:translateY(-3px); min-width:16px }
+.db-tijd { font-variant-numeric:tabular-nums; font-weight:600 }
+/* HASTUS-stempelkop + kolommen */
+.db-kop { display:flex; justify-content:space-between; align-items:baseline; gap:12px; border-bottom:2px solid currentColor; padding-bottom:4px }
+.db-kop-naam { font-weight:800; font-size:18px; text-align:center; flex:1 }
+.db-kop-datum { font-size:13px; color:var(--muted); white-space:nowrap }
+.db-kop2 { display:flex; gap:14px; align-items:stretch; margin:8px 0 10px; border-bottom:2px solid currentColor; padding-bottom:8px; flex-wrap:wrap }
+.db-loop { border:1px solid currentColor; border-radius:6px; padding:6px 14px; min-width:80px; display:flex; flex-direction:column; justify-content:center }
+.db-loop-groep, .db-loop-nr { font-weight:800; font-size:20px; line-height:1.15 }
+.db-stempel { border-collapse:collapse; font-size:12px }
+.db-stempel th { text-align:left; font-weight:700; color:var(--muted); padding:0 10px 2px 0; vertical-align:bottom; white-space:nowrap }
+.db-stempel td { padding:0 10px 0 0; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap }
+.db-kolommen { columns:300px 3; column-gap:26px }
+.db-blok { break-inside:avoid; margin:0 0 4px; padding-top:6px; border-top:1px solid var(--line) }
+.db-blok.eerste { border-top:0; padding-top:0 }
+.db-code { font-weight:700; font-size:12px; color:var(--muted); margin-bottom:2px; font-variant-numeric:tabular-nums }
+.db-blok.db-dood .db-code { font-style:italic }
+.db-code input.ritnr { width:54px; padding:1px 4px; font-weight:700; font-size:12px }
+@media print {
+  body { padding:0 } .panel, h1 + p.muted { display:none !important }
+  #dienstblad-paneel { display:block !important; border:0; padding:0; margin:0 }
+  #dienstblad-paneel h2, #dienstblad-paneel .rij, #dienstblad-paneel > p.muted, #dienstblad-paneel button, #netstat { display:none !important }
+  .db-vel { break-inside:avoid; page-break-inside:avoid }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Eigen net — routes & omlopen</h1>
+<p class="muted">Teken zelf je lijnen (heen- en terugroute), stel uren en frequentie in, en laat automatisch een dienstblad opbouwen.</p>
+
+<div id="aanmeld" class="panel">
+  <p class="muted" style="margin-top:0">Log <a href="/login?terug=/eigennet">in</a> met een account dat netten mag bewerken, of open met het beheerderswachtwoord.</p>
+  <label for="pw">Beheerderswachtwoord</label>
+  <input id="pw" type="password" placeholder="Beheerderswachtwoord" autocomplete="current-password">
+  <button class="go" id="open">Openen</button>
+  <div id="aanmeldfout" class="fout"></div>
+</div>
+
+<div id="paneel" hidden>
+  <div class="panel">
+    <h2>Opgeslagen netten</h2>
+    <div id="netlijst" class="muted">Laden…</div>
+    <button id="nieuw" class="accent">+ Nieuw net</button>
+  </div>
+
+  <div class="panel">
+    <h2>Net</h2>
+    <div class="rij">
+      <div><label for="naam">Naam van het net</label><input id="naam" placeholder="bv. Nostalbus"></div>
+      <div style="align-self:end"><label style="display:flex;align-items:center;gap:6px;white-space:normal"><input type="checkbox" id="publiekHaltebord" style="min-width:auto;width:auto"> Publiek haltebord (QR aan de halte werkt voor iedereen, ook zonder login)</label></div>
+    </div>
+    <p class="muted" style="margin-top:4px">Omlopen worden over alle lijnen heen samengesteld op basis van de diensttijd, niet per lijn. Een bus kan dus na een rit op de ene lijn een aansluitende rit op een andere lijn nemen. Het omloopnummer begint met het nummer van de stelplaats waar de omloop vertrekt.</p>
+    <p class="muted" style="margin-top:4px"><button id="halteborden" type="button">Halteborden met QR openen →</button> <span class="muted">Bewaar het net eerst. Elke halte krijgt een printbaar bord met de uren en een QR naar de live doorkomsten.</span></p>
+  </div>
+
+  <div class="panel">
+    <h2>Stelplaatsen</h2>
+    <p class="muted">Zet bij "Route tekenen" de modus op <b>Stelplaats</b> en klik op de kaart om een stelplaats te plaatsen (of sleep een bestaande). Elke omloop krijgt automatisch een uitrit vanaf en een inrit naar de dichtstbijzijnde stelplaats.</p>
+    <div id="stelplaatslijst" class="muted">Nog geen stelplaatsen.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Lijnen</h2>
+    <div id="lijntabs" class="tabrij"></div>
+    <div class="rij">
+      <div><label for="lijn">Lijnnummer</label><input id="lijn" placeholder="bv. 1" style="width:100px"></div>
+      <button id="lijnweg" class="no">Deze lijn verwijderen</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Route tekenen</h2>
+    <div class="legenda"><span><i class="dot" style="background:var(--heen)"></i> Heen</span><span><i class="dot" style="background:var(--terug)"></i> Terug</span></div>
+    <div class="tabrij" style="margin-top:6px">
+      Tekenen op: <button id="rtHeen" class="aan">Heenroute</button><button id="rtTerug">Terugroute</button>
+      <button id="spiegel">Terug = omgekeerde heen</button>
+      <button id="toggleAnder" title="Verberg de andere route als ze bovenop deze ligt, zodat je deze makkelijk bewerkt">Andere route verbergen</button>
+      <label style="display:inline;margin-left:8px">Route importeren (GPX / KML / KMZ): </label><input id="gpx" type="file" accept=".gpx,.kml,.kmz,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,text/xml" style="max-width:240px">
+    </div>
+    <div class="tabrij" style="margin-top:4px">
+      Klik voegt toe: <button id="modHalte" class="aan">Halte</button><button id="modVorm">Vormpunt</button><button id="modStel">Stelplaats</button><button id="modSleep" title="Sleep op de kaart om de hele route te verplaatsen">✋ Route verslepen</button>
+      <label style="display:inline;margin-left:10px" title="Elke nieuwe halte wordt meteen via de weg met de vorige verbonden"><input type="checkbox" id="opdeweg"> Klik volgt de weg</label>
+    </div>
+    <p class="muted"><b>Halte</b>: klik op de kaart voegt een halte (stopplaats) toe aan de gekozen route; sleep een halte om ze te verplaatsen. <b>Vormpunt</b>: zet de modus op Vormpunt. Op elk stuk van de lijn staan <b>stippelbolletjes</b> — sleep er een om de lijn daar op de baan te trekken (er komt vanzelf een vormpunt bij). Ook op een dichte route (bv. na "Volg de weg") blijven die bolletjes staan, verspreid over de hele lijn. Je kan ook gewoon <b>naast de lijn klikken</b> om er een vormpunt bij te zetten. Een vormpunt verslepen buigt verder; erop klikken verwijdert het. Vormpunten zijn geen haltes. Klik op een halte om ze te <b>hernoemen of verwijderen</b>. <b>Verbinden</b>: sleep een halte tot vlak bij een andere halte en ze <b>klikt eraan vast</b> (handig om twee stukken aan elkaar te knopen). <b>✋ Route verslepen</b>: zet die modus aan en sleep op de kaart om de hele route in één keer te verplaatsen.</p>
+    <div class="tabrij" style="margin-top:4px">
+      <div class="zoekwrap"><input id="zoek" placeholder="Zoek een plaats of adres…" autocomplete="off"><div id="zoeksug" class="zoeksug" hidden></div></div>
+      <button id="zoekknop">Zoeken</button>
+      <button id="mijnloc">📍 Mijn locatie</button>
+      <button id="fitkaart">Toon volledige route</button>
+    </div>
+    <div id="kaart"></div>
+    <div class="rij" style="margin-top:8px">
+      <div><label for="snelheid">Snelheid voor schatting (km/u)</label><input id="snelheid" type="number" min="5" max="90" value="25"></div>
+      <button id="volgweg" class="accent">Volg de weg</button>
+      <button id="rechte">Rechte lijnen</button>
+      <button id="omkeer">↔ Route omkeren</button>
+      <button id="benoem">🏷 Haltes benoemen (adres)</button>
+      <button id="herbereken">Reistijden herberekenen</button>
+      <button id="wisroute" class="no">Deze route wissen</button>
+      <button id="ongedaan">↶ Ongedaan maken</button>
+    </div>
+    <div class="tabrij" style="margin-top:4px"><label style="display:inline"><input type="checkbox" id="autoweg" checked> Route automatisch op de weg leggen als ik haltes teken of wijzig <span class="muted">(aan — je hoeft dan niet zelf op "Volg de weg" te drukken; zet uit als je de ruwe getekende lijn wil houden)</span></label></div>
+    <p class="muted">Klik op de kaart voegt een halte toe; klik <b>op de lijn</b> om er een halte <b>tussen te voegen</b> (of gebruik ＋ in de tabel). Je haltes wijzigen verandert <b>de getekende route niet</b>: druk zelf op <b>"Volg de weg"</b> wanneer je de route (opnieuw) op de echte wegen wil leggen (gratis OSRM-router). De route komt <b>in het midden van de baan</b> te liggen en <b>houdt géén rekening met eenrichtingsstraten of verboden in te rijden</b> — hij gaat dus net zo door de straten als jij tekent. <b>Tip voor weinig correcties:</b> teken eerst een ruwe lijn langs de juiste straten (zet in de Vormpunt-modus een paar punten op de weg waar hij langs moet), en "Volg de weg" legt de lijn dán nauwkeurig door jóuw punten op de echte weg in plaats van zelf de snelste route te kiezen. Kan de router een stuk niet volgen, of wil je het zelf tekenen? Teken dat stuk met vormpunten en zet het <b>op slot (🔒)</b> in de tabel; "Volg de weg" laat vergrendelde stukken dan staan. "Rechte lijnen" wist de vormpunten. Vergist? "Ongedaan maken" (of Ctrl+Z) zet de laatste bewerking terug. Je net wordt automatisch bewaard.</p>
+    <table id="haltetabel"><thead><tr><th>#</th><th>Halte</th><th>Reistijd → volgende (min)</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Dienst (voor deze lijn)</h2>
+    <div class="rij">
+      <div><label for="freq">Frequentie (elke … min)</label><input id="freq" type="number" min="1" max="120" value="20"></div>
+      <div><label for="keer">Keertijd (min)</label><input id="keer" type="number" min="0" max="120" value="5"></div>
+      <div><label for="richting">Richting</label><select id="richting"><option value="beide">Heen en terug</option><option value="heen">Enkel heen</option></select></div>
+    </div>
+    <div id="terugAutoRij" style="margin-top:8px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input id="terugAuto" type="checkbox"> Terug sluit automatisch aan op de heen <span class="muted" style="font-weight:400">(elke heenrit krijgt meteen een terugrit, vertrek = aankomst + keertijd — geen vaste teruguren nodig)</span></label></div>
+    <div class="rij" style="margin-top:6px">
+      <div><label for="van">Heen — eerste vertrek</label><input id="van" type="time" value="06:00"></div>
+      <div><label for="tot">Heen — laatste vertrek</label><input id="tot" type="time" value="22:00"></div>
+      <div id="terugVan"><label for="vanT">Terug — eerste vertrek</label><input id="vanT" type="time" value="06:00"></div>
+      <div id="terugTot"><label for="totT">Terug — laatste vertrek</label><input id="totT" type="time" value="22:00"></div>
+    </div>
+    <label style="margin-top:8px">Rijdagen</label>
+    <div class="dagen" id="dagen"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Dagplanning</h2>
+    <p class="muted">Alle ritten van de dag, per groep rijdagen, met hun <b>ritnummer</b>. De kolom <b>Omloop</b> toont de automatisch voorgestelde omloop; wijzig het nummer om een rit zelf aan een andere omloop toe te wijzen. De dienstbladen hieronder volgen die indeling.</p>
+    <button id="herverdeel">Automatisch opnieuw indelen</button>
+    <div id="dagplanning"></div>
+  </div>
+
+  <div class="panel" id="sim-paneel">
+    <h2>Simulatie — zie je net rijden</h2>
+    <p class="muted">Speel de dag af en zie elke bus over zijn route bewegen volgens de dienstregeling. De bussen verschijnen op de kaart hierboven.</p>
+    <div class="rij" style="align-items:center;gap:10px">
+      <button id="simPlay" class="go">▶ Afspelen</button>
+      <div style="flex:1;min-width:160px"><input id="simTijd" type="range" min="0" max="1439" value="360" style="width:100%"></div>
+      <span id="simKlok" class="n" style="font-weight:700;min-width:54px">06:00</span>
+      <div><label for="simSnel" style="display:inline">Snelheid</label> <select id="simSnel"><option value="30">30×</option><option value="60" selected>60×</option><option value="120">120×</option><option value="300">300×</option></select></div>
+      <span id="simTel" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="dienstblad-paneel">
+    <h2>Dienstblad</h2>
+    <div class="rij">
+      <div><label for="ritStart">Eerste ritnummer (heen, even)</label><input id="ritStart" type="number" min="0" max="999999" value="2"></div>
+      <div><label for="ritModus">Ritnummering</label><select id="ritModus"><option value="doorlopend">Doorlopend</option><option value="omloop">Per omloop opnieuw</option></select></div>
+      <div><label for="mAanmeld">Aanmelden (min vóór)</label><input id="mAanmeld" type="number" min="0" max="120" value="5"></div>
+      <div><label for="mAfmeld">Afmelden (min ná)</label><input id="mAfmeld" type="number" min="0" max="120" value="10"></div>
+    </div>
+    <p class="muted" style="margin-top:4px">Per omloop een stempelkop (aan-/afmelduur, begin- en eindplaats/-uur), per rit alle haltes met passeeruren (eerste en laatste vet) en pauzes ertussen. <b>Heenritten krijgen even nummers (2,4,6,…), terugritten oneven nummers (3,5,7,…)</b>; elk ritnummer blijft zelf aanpasbaar.</p>
+    <button id="genereer" class="accent">Dienstblad genereren</button>
+    <button id="afdruk">Afdrukken</button>
+    <button id="bewaar" class="go">Bewaren</button>
+    <button id="csvdag">Dagplanning (CSV)</button>
+    <button id="csvoml">Omlopen (CSV)</button>
+    <span id="status" class="ok"></span>
+    <div id="fout" class="fout"></div>
+    <div id="netstat"></div>
+    <div id="dienstblad"></div>
+  </div>
+
+  <p class="muted"><a href="/admin">← Beheer</a> · <a href="/">naar de omlopen</a></p>
+</div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pad = (n) => String(n).padStart(2, "0");
+const minNaarUur = (m) => pad(Math.floor(m / 60) % 24) + ":" + pad(m % 60);
+const uurNaarMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || "")); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const DAGNAMEN = ["", "Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+
+let pw = "";
+let netNaam = "";
+let stelplaatsen = [];    // [{nr, naam, lat, lon}] — vertrek-/aankomstpunten voor uitrit/inrit
+let omloopStart = 1;      // eerste omloopnummer (net-niveau; omlopen worden over lijnen heen gekoppeld)
+let ritStart = 1, ritModus = "doorlopend", ritNrs = {}; // ritnummering op net-niveau
+let aanmeld = 5, afmeld = 10; // stempelmarge: min aanmelden vóór eerste vertrek / afmelden ná laatste aankomst
+let omloopToewijzing = {};    // dagKey → gekozen omloopnummer (overschrijft de automatische indeling)
+let historie = [];            // momentopnames voor "ongedaan maken"
+let bewaarTimer = null, laatstBewaard = "", wegTimer = null; // debounce voor autosave en auto-wegvolgen
+const LS = "eigennet-concept";
+let lijnen = [];          // [{lijn, heen:[], terug:[], venster, frequentie, keertijd, richtingen, dagen}]
+let actief = 0;           // index actieve lijn
+let route = "heen";       // welke route de kaartklik vult
+let modus = "halte";      // "halte" | "vorm" | "stelplaats" — wat een kaartklik toevoegt
+let opDeWeg = false;      // "teken op de weg": elke nieuwe halte meteen via OSRM met de vorige verbinden
+// Gratis OSRM-router met het VOETGANGER-profiel: dat volgt de weg precies op het midden van de baan
+// én negeert eenrichtingsstraten en verboden-in-te-rijden, zodat de route gaat waar jij ze tekent
+// in plaats van om te rijden. (Het auto-profiel zou wél rekening houden met die beperkingen.)
+const OSRM = "https://routing.openstreetmap.de/routed-foot/route/v1/driving/";
+let huidigId = "";
+
+function legeLijn() { return { lijn: "", heen: [], terug: [], venster: { van: "06:00", tot: "22:00" }, vensterT: { van: "06:00", tot: "22:00" }, terugAuto: false, frequentie: 20, keertijd: 5, richtingen: "beide", dagen: [1, 2, 3, 4, 5] }; }
+function L0() { return lijnen[actief] || (lijnen[actief] = legeLijn()); }
+function actieveHaltes() { return L0()[route]; }
+
+// --- API ---------------------------------------------------------------------
+async function net(body) {
+  const r = await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ beheer: pw, ...body }) });
+  let d = {}; try { d = await r.json(); } catch {}
+  if (!r.ok) throw new Error(d.fout || ("fout " + r.status));
+  return d;
+}
+
+// --- Ongedaan maken + automatisch opslaan ------------------------------------
+// snap() bewaart de huidige toestand VÓÓR een wijziging; ongedaan() zet de laatste terug.
+function snap() { try { const s = JSON.stringify(huidigNet()); if (historie[historie.length - 1] === s) return; historie.push(s); if (historie.length > 80) historie.shift(); } catch {} }
+function ongedaan() {
+  if (!historie.length) { $("status").textContent = "Niets om ongedaan te maken."; return; }
+  const bewaardActief = actief, bewaardRoute = route;
+  let n; try { n = JSON.parse(historie.pop()); } catch { return; }
+  vulForm(n, true);   // zicht/zoom behouden bij ongedaan maken
+  actief = Math.min(bewaardActief, lijnen.length - 1); route = bewaardRoute;
+  zetRouteKnoppen(); tekenLijntabs(); toonLijnForm(); tekenKaart(); tekenHalteTabel();
+  $("status").textContent = "Ongedaan gemaakt" + (historie.length ? " (" + historie.length + " stap(pen) over)" : "");
+  planBewaar();
+}
+// Automatisch opslaan: meteen lokaal (overleeft een refresh) en met vertraging naar de server.
+function planBewaar() {
+  let n; try { n = huidigNet(); } catch { return; }
+  try { localStorage.setItem(LS, JSON.stringify(n)); } catch {}
+  clearTimeout(bewaarTimer); bewaarTimer = setTimeout(autoBewaar, 4000);
+}
+async function autoBewaar() {
+  let n; try { n = huidigNet(); } catch { return; }
+  if (!n.lijnen.some((l) => (l.heen || []).length >= 2)) return; // nog niets bewaarbaars
+  const tekst = JSON.stringify(n);
+  if (tekst === laatstBewaard) return;                           // niets gewijzigd → geen KV-schrijf
+  try { const d = await net({ actie: "bewaar", net: n }); huidigId = d.net.id; laatstBewaard = JSON.stringify(huidigNet()); $("status").textContent = "Automatisch bewaard ✓"; laadLijst(); }
+  catch (e) { $("status").textContent = "Automatisch bewaren mislukt (lokaal bewaard)."; }
+}
+
+// --- Kaart -------------------------------------------------------------------
+let kaart, heenLaag, terugLaag, heenLijn, terugLijn, stelLaag, lengteCtrl, toonAndere = true;
+let simLaag, simData = null, simT = 360, simSpelen = false, simRAF = null, simVorigeMs = 0, simSnelheid = 60;
+const busIcon = L.divIcon({ className: "busicon", html: "🚌", iconSize: [22, 22], iconAnchor: [11, 11] });
+function initKaart() {
+  kaart = L.map("kaart").setView([51.05, 3.72], 12);
+  const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap-bijdragers" });
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics" });
+  const fiets = L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; CyclOSM, OpenStreetMap-bijdragers" });
+  const lagen = { "Stratenkaart": osm, "Satelliet": sat, "Fietskaart": fiets };
+  let gekozen = "Stratenkaart"; try { gekozen = localStorage.getItem("eigennet-laag") || "Stratenkaart"; } catch {}
+  (lagen[gekozen] || osm).addTo(kaart);
+  L.control.layers(lagen, null, { position: "topright" }).addTo(kaart);
+  kaart.on("baselayerchange", (e) => { try { localStorage.setItem("eigennet-laag", e.name); } catch {} });
+  L.control.scale({ metric: true, imperial: false, position: "bottomright" }).addTo(kaart);
+  heenLijn = L.polyline([], { color: getComputedStyle(document.body).getPropertyValue("--heen") || "#1f5f8b", weight: 4, opacity: .85 }).addTo(kaart);
+  terugLijn = L.polyline([], { color: getComputedStyle(document.body).getPropertyValue("--terug") || "#e0772e", weight: 4, opacity: .85, dashArray: "6 6" }).addTo(kaart);
+  heenLaag = L.layerGroup().addTo(kaart);
+  terugLaag = L.layerGroup().addTo(kaart);
+  stelLaag = L.layerGroup().addTo(kaart);
+  simLaag = L.layerGroup().addTo(kaart);
+  lengteCtrl = L.control({ position: "bottomleft" });
+  lengteCtrl.onAdd = () => { const d = L.DomUtil.create("div", "lengtebadge"); d.id = "lengtebadge"; d.style.display = "none"; return d; };
+  lengteCtrl.addTo(kaart);
+  const volCtrl = L.control({ position: "topleft" });
+  volCtrl.onAdd = () => { const b = L.DomUtil.create("button", "volknop"); b.type = "button"; b.title = "Volledig scherm aan/uit"; b.textContent = "⛶"; L.DomEvent.disableClickPropagation(b); b.onclick = toggleVolledig; return b; };
+  volCtrl.addTo(kaart);
+  kaart.on("click", (e) => { if (modus === "sleep") return; if (modus === "stelplaats") voegStelplaatsToe(e.latlng); else if (modus === "vorm") voegVormpuntToe(e.latlng); else klikHalte(e.latlng); });
+  kaart.on("mousedown", sleepStartFn);
+  kaart.on("mousemove", sleepBeweegFn);
+  kaart.on("mouseup", sleepStopFn);
+}
+// --- Hele route verslepen (modus "sleep"): sleep op de kaart verschuift alle haltes + vorm samen. ---
+let sleepVanaf = null;
+function sleepStartFn(e) { if (modus !== "sleep") return; sleepVanaf = e.latlng; kaart.dragging.disable(); snap(); }
+function sleepBeweegFn(e) {
+  if (modus !== "sleep" || !sleepVanaf) return;
+  const dLat = e.latlng.lat - sleepVanaf.lat, dLon = e.latlng.lng - sleepVanaf.lng; sleepVanaf = e.latlng;
+  const hs = actieveHaltes();
+  hs.forEach((h) => { h.lat += dLat; h.lon += dLon; (h.vorm || []).forEach((v) => { v.lat += dLat; v.lon += dLon; }); });
+  (route === "heen" ? heenLijn : terugLijn).setLatLngs(routePad(hs));
+}
+function sleepStopFn() {
+  if (!sleepVanaf) return;
+  sleepVanaf = null; kaart.dragging.enable();
+  const hs = actieveHaltes(); herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar();
+}
+// Dichtstbijzijnde ándere halte (in heen of terug) binnen ~18 px van h, om stukken te verbinden.
+function dichtsteAndereHalte(h) {
+  const alle = [...(L0().heen || []), ...(L0().terug || [])].filter((x) => x !== h);
+  const ph = kaart.latLngToLayerPoint([h.lat, h.lon]);
+  let best = null, bd = 18;
+  for (const x of alle) { const px = kaart.latLngToLayerPoint([x.lat, x.lon]); const d = ph.distanceTo(px); if (d < bd) { bd = d; best = x; } }
+  return best;
+}
+// Kaart op volledig scherm zetten (handig om nauwkeurig te tekenen); Escape sluit het.
+function toggleVolledig() {
+  const el = $("kaart"); if (!el) return;
+  el.classList.toggle("vol");
+  setTimeout(() => kaart.invalidateSize(), 60);
+}
+// Een halte hernoemen of verwijderen via een popup op de kaart; verwijderen behoudt de getekende lijn.
+function koppelHaltePopup(m, h, hs) {
+  m.bindPopup(() => `<div class="haltepop"><input class="pn" value="${esc(h.naam)}" placeholder="Haltenaam"><div style="margin-top:6px"><button class="pok">Opslaan</button> <button class="pweg">Verwijderen</button></div></div>`);
+  m.on("popupopen", (e) => {
+    const node = e.popup.getElement(); if (!node) return;
+    const inp = node.querySelector(".pn"); if (inp) inp.focus();
+    const ok = node.querySelector(".pok"), weg = node.querySelector(".pweg");
+    if (ok) ok.onclick = () => { snap(); h.naam = inp.value; m.closePopup(); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+    if (inp) inp.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); ok.click(); } };
+    if (weg) weg.onclick = () => {
+      snap(); const idx = hs.indexOf(h);
+      if (idx > 0 && idx < hs.length - 1) hs[idx - 1].vorm = [...(hs[idx - 1].vorm || []), { lat: h.lat, lon: h.lon }, ...(h.vorm || [])];
+      if (idx >= 0) hs.splice(idx, 1);
+      m.closePopup(); herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar();
+    };
+  });
+}
+// Keer de volgorde van een route om; de getekende vorm blijft exact, maar in omgekeerde richting.
+function keerRouteOm(hs) {
+  const n = hs.length; if (n < 2) return hs;
+  const nieuweVorm = []; for (let k = 0; k < n; k++) nieuweVorm[k] = (k < n - 1) ? (hs[n - 2 - k].vorm || []).slice().reverse() : [];
+  const r = hs.slice().reverse();
+  r.forEach((h, k) => { h.vorm = nieuweVorm[k]; });
+  return r;
+}
+
+// --- Simulatie: elke omloop als een reeks "legs" (uitrit, ritten, inrit) met start/eind-minuut en
+// het getekende pad, zodat we op elk tijdstip de buspositie kunnen interpoleren. --------------------
+function padCum(pad) { const c = [0]; for (let i = 1; i < pad.length; i++) c[i] = c[i - 1] + afstandMeter({ lat: pad[i - 1][0], lon: pad[i - 1][1] }, { lat: pad[i][0], lon: pad[i][1] }); return c; }
+function posOpPad(pad, cum, frac) {
+  if (pad.length <= 1) return pad[0];
+  const tot = cum[cum.length - 1] || 0; if (tot === 0) return pad[0];
+  const d = Math.max(0, Math.min(1, frac)) * tot;
+  let i = 1; while (i < cum.length && cum[i] < d) i++;
+  const a = pad[i - 1], b = pad[i] || pad[i - 1], seg = (cum[i] || tot) - cum[i - 1] || 1, f = (d - cum[i - 1]) / seg;
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+function bouwSimulatie(res) {
+  const sims = []; let gMin = Infinity, gMax = -Infinity;
+  for (const o of res.omlopen) {
+    const legs = [], eersteRit = o.ritten[0], laatsteRit = o.ritten[o.ritten.length - 1];
+    const h0 = richtingHaltes(lijnen[eersteRit.lijnIdx], eersteRit.richting)[0];
+    const eindHs = richtingHaltes(lijnen[laatsteRit.lijnIdx], laatsteRit.richting), hN = eindHs[eindHs.length - 1];
+    const uit = dichtsteStelplaats({ lat: h0.lat, lon: h0.lon }), inr = dichtsteStelplaats({ lat: hN.lat, lon: hN.lon });
+    if (uit) { const pad = [[uit.stel.lat, uit.stel.lon], [h0.lat, h0.lon]]; legs.push({ pad, cum: padCum(pad), start: eersteRit.vertrek - dodeTijd(uit.m), eind: eersteRit.vertrek, dood: true }); }
+    o.ritten.forEach((r) => { const pad = routePad(richtingHaltes(lijnen[r.lijnIdx], r.richting)); legs.push({ pad, cum: padCum(pad), start: r.vertrek, eind: r.aankomst, dood: false }); });
+    if (inr) { const pad = [[hN.lat, hN.lon], [inr.stel.lat, inr.stel.lon]]; legs.push({ pad, cum: padCum(pad), start: laatsteRit.aankomst, eind: laatsteRit.aankomst + dodeTijd(inr.m), dood: true }); }
+    if (!legs.length) continue;
+    const van = legs[0].start, tot = legs[legs.length - 1].eind;
+    gMin = Math.min(gMin, van); gMax = Math.max(gMax, tot);
+    sims.push({ omloop: o.omloop, legs, van, tot });
+  }
+  return { sims, min: isFinite(gMin) ? Math.floor(gMin) : 360, max: isFinite(gMax) ? Math.ceil(gMax) : 1200 };
+}
+function simPositie(sim, t) {
+  if (t < sim.van || t > sim.tot) return null;
+  for (let i = 0; i < sim.legs.length; i++) {
+    const lg = sim.legs[i];
+    if (t >= lg.start && t <= lg.eind) { const dur = lg.eind - lg.start; return { pos: posOpPad(lg.pad, lg.cum, dur > 0 ? (t - lg.start) / dur : 0), dood: lg.dood, rijdt: true }; }
+    if (i < sim.legs.length - 1 && t > lg.eind && t < sim.legs[i + 1].start) { const last = lg.pad[lg.pad.length - 1]; return { pos: last, dood: false, rijdt: false }; } // pauze: wacht aan het eindpunt
+  }
+  return null;
+}
+function tekenSim() {
+  if (!simLaag) return;
+  simLaag.clearLayers();
+  if ($("simKlok")) $("simKlok").textContent = minNaarUur(Math.round(simT));
+  if ($("simTijd")) $("simTijd").value = Math.round(simT);
+  let n = 0;
+  if (simData) for (const sim of simData.sims) {
+    const r = simPositie(sim, simT); if (!r) continue;
+    n++;
+    L.marker(r.pos, { icon: busIcon, opacity: r.rijdt ? 1 : .55, zIndexOffset: 1000 }).addTo(simLaag)
+      .bindTooltip(sim.omloop + (r.rijdt ? "" : " ⏸"), { permanent: true, direction: "top", className: "simtip" });
+  }
+  if ($("simTel")) $("simTel").textContent = n ? (n + " bus(sen) onderweg") : "geen bus onderweg";
+}
+function simZetBereik() {
+  if (!simData || !$("simTijd")) return;
+  $("simTijd").min = simData.min; $("simTijd").max = simData.max;
+  if (simT < simData.min || simT > simData.max) simT = simData.min;
+}
+function simStap(ms) {
+  if (!simSpelen) return;
+  if (simVorigeMs) simT += (ms - simVorigeMs) / 1000 * simSnelheid;
+  simVorigeMs = ms;
+  const max = simData ? simData.max : 1439;
+  if (simT >= max) { simT = max; tekenSim(); stopSim(); return; }
+  tekenSim();
+  simRAF = requestAnimationFrame(simStap);
+}
+function startSim() {
+  if (!simData || !simData.sims.length) { toonDienstblad(); }
+  if (!simData || !simData.sims.length) { $("fout").textContent = "Genereer eerst een dienstblad (minstens één omloop)."; return; }
+  simSpelen = true; simVorigeMs = 0; $("simPlay").textContent = "⏸ Pauze";
+  simRAF = requestAnimationFrame(simStap);
+}
+function stopSim() { simSpelen = false; if (simRAF) cancelAnimationFrame(simRAF); simRAF = null; if ($("simPlay")) $("simPlay").textContent = "▶ Afspelen"; }
+// Live lengte + rijtijd van beide routes onderaan de kaart.
+function werkLengteBadgeBij() {
+  const b = document.getElementById("lengtebadge"); if (!b) return;
+  const heen = L0().heen, terug = L0().terug;
+  if (heen.length < 2 && terug.length < 2) { b.style.display = "none"; return; }
+  const delen = [];
+  if (heen.length >= 2) delen.push(`<span class="h">Heen ${routeAfstandKm(heen).toFixed(2)} km · ${ritduur(heen)} min</span>`);
+  if (terug.length >= 2) delen.push(`<span class="t">Terug ${routeAfstandKm(terug).toFixed(2)} km · ${ritduur(terug)} min</span>`);
+  b.innerHTML = delen.join(" &nbsp;·&nbsp; ");
+  b.style.display = "block";
+}
+// --- Plaats/adres zoeken (gratis Nominatim/OSM) met live suggesties -----------
+let zoekTimer = null, zoekTreffers = [], zoekSel = -1;
+async function haalZoekSuggesties(q) {
+  const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=0&countrycodes=be,nl,fr,lu&accept-language=nl&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
+  if (!r.ok) throw new Error("zoekfout");
+  return r.json();
+}
+function toonZoekSuggesties() {
+  const el = $("zoeksug");
+  if (!zoekTreffers.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.innerHTML = zoekTreffers.map((t, i) => `<div data-i="${i}" class="${i === zoekSel ? "sel" : ""}">${esc(t.display_name)}</div>`).join("");
+  el.hidden = false;
+  el.querySelectorAll("div[data-i]").forEach((d) => d.onclick = () => kiesZoektreffer(+d.dataset.i));
+}
+function kiesZoektreffer(i) {
+  const t = zoekTreffers[i]; if (!t) return;
+  kaart.setView([+t.lat, +t.lon], 15);
+  $("zoeksug").hidden = true; zoekTreffers = []; zoekSel = -1;
+}
+function planZoek() {
+  const q = $("zoek").value.trim();
+  clearTimeout(zoekTimer);
+  if (q.length < 3) { $("zoeksug").hidden = true; zoekTreffers = []; return; }
+  zoekTimer = setTimeout(async () => {
+    try { zoekTreffers = await haalZoekSuggesties(q); zoekSel = -1; toonZoekSuggesties(); }
+    catch { $("zoeksug").hidden = true; }
+  }, 350); // Nominatim-beleid: max ~1 verzoek/sec, dus debounce
+}
+async function zoekNu() {
+  const q = $("zoek").value.trim(); if (q.length < 2) return;
+  if (zoekTreffers.length) { kiesZoektreffer(zoekSel >= 0 ? zoekSel : 0); return; }
+  try { const d = await haalZoekSuggesties(q); if (d.length) { zoekTreffers = d; kiesZoektreffer(0); } else $("fout").textContent = `Niets gevonden voor "${q}".`; }
+  catch { $("fout").textContent = "Zoeken mislukt (geen netwerk?)."; }
+}
+function mijnLocatie() {
+  if (!navigator.geolocation) { $("fout").textContent = "Locatie niet beschikbaar in deze browser."; return; }
+  navigator.geolocation.getCurrentPosition(
+    (p) => kaart.setView([p.coords.latitude, p.coords.longitude], 15),
+    () => { $("fout").textContent = "Locatie geweigerd of niet beschikbaar."; });
+}
+function fitRoute() {
+  const alle = lijnen.flatMap((l) => (l.heen || []).concat(l.terug || [])).map((h) => [h.lat, h.lon]).concat(stelplaatsen.map((s) => [s.lat, s.lon]));
+  if (alle.length) kaart.fitBounds(alle, { padding: [30, 30] }); else $("fout").textContent = "Nog geen route om te tonen.";
+}
+// Haltes van de actieve route een naam geven op basis van het dichtstbijzijnde adres (gratis Nominatim).
+// Nominatim-beleid: max ~1 verzoek/sec, dus we wachten telkens even.
+let benoemBezig = false;
+async function benoemHaltesViaAdres() {
+  if (benoemBezig) return;
+  const hs = actieveHaltes(); if (!hs.length) { $("fout").textContent = "Deze route heeft nog geen haltes."; return; }
+  benoemBezig = true; snap();
+  for (let i = 0; i < hs.length; i++) {
+    $("fout").textContent = `Haltes benoemen via adres… (${i + 1}/${hs.length})`;
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=nl&lat=${hs[i].lat}&lon=${hs[i].lon}`, { headers: { "Accept": "application/json" } });
+      const d = await r.json(); const a = d.address || {};
+      const straat = a.road || a.pedestrian || a.footway || a.square || "";
+      const plaats = a.village || a.town || a.city || a.municipality || a.suburb || a.hamlet || "";
+      const naam = [straat, plaats].filter(Boolean).join(", ") || d.name || "";
+      if (naam) { hs[i].naam = naam; tekenKaart(); tekenHalteTabel(); }
+    } catch { /* dit punt overslaan */ }
+    if (i < hs.length - 1) await new Promise((res) => setTimeout(res, 1100));
+  }
+  $("fout").textContent = ""; benoemBezig = false; planBewaar();
+}
+const vormIcon = L.divIcon({ className: "vormpt", iconSize: [12, 12], iconAnchor: [6, 6] });
+const ghostIcon = L.divIcon({ className: "ghostpt", iconSize: [11, 11], iconAnchor: [5, 5] });
+const stelIcon = L.divIcon({ className: "stelpt", iconSize: [16, 16], iconAnchor: [8, 8] });
+function afstandMeter(a, b) {
+  const R = 6371000, rad = (x) => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+// Volledige puntenreeks van een route: elke halte, gevolgd door de vormpunten op het segment ná die halte.
+function routePunten(hs) {
+  const pts = [];
+  hs.forEach((h, hi) => { pts.push({ lat: h.lat, lon: h.lon, type: "halte", hi }); (h.vorm || []).forEach((v, vi) => pts.push({ lat: v.lat, lon: v.lon, type: "vorm", hi, vi })); });
+  return pts;
+}
+function routePad(hs) { return routePunten(hs).map((p) => [p.lat, p.lon]); }
+// Afstand (m) van één segment tussen halte en volgende halte, langs de vormpunten.
+function segAfstand(h, next) {
+  const pts = [{ lat: h.lat, lon: h.lon }, ...(h.vorm || []), { lat: next.lat, lon: next.lon }];
+  let d = 0; for (let i = 0; i < pts.length - 1; i++) d += afstandMeter(pts[i], pts[i + 1]); return d;
+}
+function kmu() { return Math.max(5, Math.min(90, Number($("snelheid").value) || 25)); }
+function schatReistijd(a, b) { return Math.max(1, Math.round((afstandMeter(a, b) / 1000) / kmu() * 60)); }
+function herberekenHaltes(hs) { for (let i = 0; i < hs.length - 1; i++) hs[i].reistijd = Math.max(1, Math.round((segAfstand(hs[i], hs[i + 1]) / 1000) / kmu() * 60)); if (hs.length) hs[hs.length - 1].reistijd = 0; }
+async function voegHalteToe(lat, lon) {
+  snap();
+  const hs = actieveHaltes();
+  const vorige = hs.length - 1;
+  const h = { naam: (route === "heen" ? "H" : "T") + (hs.length + 1), lat, lon, reistijd: 0, vorm: [] };
+  hs.push(h);
+  if (opDeWeg && vorige >= 0) { tekenKaart(); await legStukOpWeg(hs, vorige); } // nieuw stuk meteen op de baan leggen
+  herberekenHaltes(hs); tekenKaart(); tekenHalteTabel();
+  if (!opDeWeg) planAutoWeg();
+}
+// Leg één stuk (halte i → i+1) op de echte weg via OSRM; gebruikt door de "teken op de weg"-modus.
+async function legStukOpWeg(hs, i) {
+  const a = hs[i], b = hs[i + 1]; if (!a || !b) return;
+  $("fout").textContent = "Stuk op de weg leggen…";
+  try {
+    const r = await fetch(`${OSRM}${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&steps=false`);
+    const d = await r.json();
+    if (d && d.code === "Ok" && d.routes && d.routes[0]) hs[i].vorm = decimeer(d.routes[0].geometry.coordinates.slice(1, -1), 250).map((c) => ({ lat: c[1], lon: c[0] }));
+  } catch { /* netwerkfout: recht stuk laten staan */ }
+  $("fout").textContent = "";
+}
+// Voeg een halte in ná halte hi, precies óp de getekende lijn, zodat de route niet verandert.
+// Is er een eindhalte ná hi, dan komt de nieuwe halte op het middelpunt van dat getekende segment
+// (de vormpunten van dat stuk worden over de twee nieuwe segmenten verdeeld). Bij de laatste halte
+// wordt in het verlengde een korte nieuwe halte toegevoegd.
+function voegHalteOpSegmentToe(hs, hi) {
+  const naam = (route === "heen" ? "H" : "T") + (hs.length + 1);
+  const next = hs[hi + 1];
+  if (!next) { // laatste halte: korte stub in dezelfde richting als het vorige segment
+    const vorig = hs[hi - 1] || { lat: hs[hi].lat - 0.003, lon: hs[hi].lon - 0.003 };
+    hs.splice(hi + 1, 0, { naam, lat: hs[hi].lat + (hs[hi].lat - vorig.lat) * 0.3, lon: hs[hi].lon + (hs[hi].lon - vorig.lon) * 0.3, reistijd: 0, vorm: [] });
+    return;
+  }
+  const vorm = hs[hi].vorm || [];
+  if (vorm.length) { // splits de getekende vorm in twee: het middelste vormpunt wordt de nieuwe halte
+    const mid = Math.floor(vorm.length / 2), p = vorm[mid];
+    const nieuw = { naam, lat: p.lat, lon: p.lon, reistijd: 0, vorm: vorm.slice(mid + 1) };
+    hs[hi].vorm = vorm.slice(0, mid);
+    hs.splice(hi + 1, 0, nieuw);
+  } else { // recht segment: halte op het geometrische middelpunt, lijn blijft dezelfde rechte
+    hs.splice(hi + 1, 0, { naam, lat: (hs[hi].lat + next.lat) / 2, lon: (hs[hi].lon + next.lon) / 2, reistijd: 0, vorm: [] });
+  }
+}
+// Klik in halte-modus: dicht bij de bestaande lijn → een halte ertussen voegen; anders achteraan toevoegen.
+function klikHalte(latlng) {
+  const hs = actieveHaltes();
+  if (hs.length >= 2) {
+    const pts = routePunten(hs);
+    let best = Infinity, bi = -1;
+    for (let i = 0; i < pts.length - 1; i++) { const d = puntNaarSegment(latlng, pts[i], pts[i + 1]); if (d < best) { best = d; bi = i; } }
+    if (bi >= 0 && best <= 50) { // dicht bij de lijn → invoegen op dat segment
+      snap();
+      const hi = pts[bi].hi; // het segment hoort bij halte hi (→ halte hi+1)
+      // De getekende vorm van dit segment splitsen op het invoegpunt, zodat de route behouden blijft.
+      const oude = hs[hi].vorm || [];
+      const splitAt = pts[bi].type === "halte" ? 0 : pts[bi].vi + 1;
+      hs[hi].vorm = oude.slice(0, splitAt);
+      hs.splice(hi + 1, 0, { naam: (route === "heen" ? "H" : "T") + (hs.length + 1), lat: latlng.lat, lon: latlng.lng, reistijd: 0, vorm: oude.slice(splitAt) });
+      herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar(); planAutoWeg();
+      return;
+    }
+  }
+  voegHalteToe(latlng.lat, latlng.lng);
+}
+// Volg automatisch de weg (indien aangevinkt): na het tekenen de route op de baan leggen.
+function planAutoWeg() {
+  if (!$("autoweg") || !$("autoweg").checked) return;
+  clearTimeout(wegTimer); wegTimer = setTimeout(() => volgDeWeg(true), 1000);
+}
+// Afstand (m, benaderd) van een klikpunt tot een segment a→b.
+function puntNaarSegment(p, a, b) {
+  const mlat = 111320, mlon = 111320 * Math.cos(p.lat * Math.PI / 180);
+  const ax = a.lon * mlon, ay = a.lat * mlat, bx = b.lon * mlon, by = b.lat * mlat, px = p.lng * mlon, py = p.lat * mlat;
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy || 1;
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function voegVormpuntToe(latlng) {
+  const hs = actieveHaltes();
+  if (hs.length < 2) { alert("Teken eerst minstens twee haltes."); return; }
+  snap();
+  const pts = routePunten(hs);
+  let best = Infinity, bi = -1;
+  for (let i = 0; i < pts.length - 1; i++) { const d = puntNaarSegment(latlng, pts[i], pts[i + 1]); if (d < best) { best = d; bi = i; } }
+  if (bi < 0) return;
+  const a = pts[bi], h = hs[a.hi];
+  if (!h.vorm) h.vorm = [];
+  h.vorm.splice(a.type === "halte" ? 0 : a.vi + 1, 0, { lat: latlng.lat, lon: latlng.lng });
+  herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar();
+}
+function tekenEenRoute(hs, lijnObj, laag, act_) {
+  laag.clearLayers();
+  const vormTotaal = hs.reduce((s, h) => s + ((h.vorm && h.vorm.length) || 0), 0);
+  const toonVorm = act_ && modus === "vorm" && vormTotaal <= 80; // losse vormpunt-bolletjes enkel bij weinig punten
+  const toonHandvat = act_ && modus === "vorm"; // buig-handvatten altijd in vormmodus, ook op een dichte route
+  hs.forEach((h, i) => {
+    const lab = i === 0 ? '<span class="endpt start">start</span>' : i === hs.length - 1 ? '<span class="endpt eind">eind</span>' : String(i + 1);
+    if (act_) {
+      const m = L.marker([h.lat, h.lon], { draggable: true }).addTo(laag).bindTooltip(lab, { permanent: true, direction: "top", className: route === "heen" ? "htip" : "ttip" });
+      m.on("dragstart", () => snap());
+      m.on("dragend", () => { const p = m.getLatLng(); h.lat = p.lat; h.lon = p.lng; const doel = dichtsteAndereHalte(h); if (doel) { h.lat = doel.lat; h.lon = doel.lon; $("fout").textContent = "Vastgeklikt op een andere halte ✓"; setTimeout(() => { if ($("fout").textContent.startsWith("Vastgeklikt")) $("fout").textContent = ""; }, 2500); } herberekenHaltes(hs); tekenKaart(); planBewaar(); planAutoWeg(); });
+      koppelHaltePopup(m, h, hs); // klik op de halte → hernoemen of verwijderen
+      if (toonVorm) (h.vorm || []).forEach((v, vi) => {
+        const vm = L.marker([v.lat, v.lon], { draggable: true, icon: vormIcon }).addTo(laag).bindTooltip("Tik om te wissen", { direction: "top" });
+        vm.on("dragstart", () => snap());
+        vm.on("drag", () => { const p = vm.getLatLng(); v.lat = p.lat; v.lon = p.lng; lijnObj.setLatLngs(routePad(hs)); });
+        vm.on("dragend", () => { herberekenHaltes(hs); tekenHalteTabel(); planBewaar(); });
+        vm.on("click", (e) => { L.DomEvent.stop(e); snap(); h.vorm.splice(vi, 1); herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar(); });
+      });
+    } else {
+      const eindpt = i === 0 ? "#2d7d46" : i === hs.length - 1 ? "#c0392b" : (laag === heenLaag ? "#1f5f8b" : "#e0772e");
+      L.circleMarker([h.lat, h.lon], { radius: (i === 0 || i === hs.length - 1) ? 6 : 5, color: "#555", weight: 1, fillColor: eindpt, fillOpacity: .85 }).addTo(laag).bindTooltip(lab, { permanent: true, direction: "top" });
+    }
+  });
+  // Sleep-handvatten op het midden van een stuk: pak zo'n bolletje en sleep om de lijn te buigen
+  // (er komt een nieuw vormpunt bij). Op een dichte route (bv. na "Volg de weg") tonen we er hoogstens
+  // ~60, gelijkmatig verspreid, zodat je overal kan bijsturen zonder honderden bolletjes.
+  if (toonHandvat) {
+    const pts = routePunten(hs);
+    const stap = Math.max(1, Math.ceil((pts.length - 1) / 60));
+    for (let k = 0; k < pts.length - 1; k += stap) {
+      const a = pts[k], b = pts[k + 1];
+      const mid = L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { draggable: true, icon: ghostIcon }).addTo(laag).bindTooltip("Sleep om de lijn te buigen", { direction: "top" });
+      let ref = null;
+      mid.on("dragstart", () => { snap(); const hi = a.hi, at = a.type === "halte" ? 0 : a.vi + 1; if (!hs[hi].vorm) hs[hi].vorm = []; const p = mid.getLatLng(); ref = { lat: p.lat, lon: p.lng }; hs[hi].vorm.splice(at, 0, ref); });
+      mid.on("drag", () => { if (ref) { const p = mid.getLatLng(); ref.lat = p.lat; ref.lon = p.lng; lijnObj.setLatLngs(routePad(hs)); } });
+      mid.on("dragend", () => { ref = null; herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar(); });
+    }
+  }
+  lijnObj.setLatLngs(routePad(hs));
+}
+// De niet-actieve route vervagen en haar kliks laten doorgaan, zodat je bij routes die
+// vlak bij elkaar of bovenop elkaar lopen altijd de ACTIEVE route bewerkt. De actieve route
+// komt naar voren te liggen.
+function stijlRoute(lijnObj, act) {
+  lijnObj.setStyle({ opacity: act ? .9 : .3, weight: act ? 4 : 3 });
+  if (lijnObj._path) lijnObj._path.style.pointerEvents = act ? "auto" : "none";
+  if (act) lijnObj.bringToFront();
+}
+function tekenKaart() {
+  if (!kaart) return;
+  const heenAct = route === "heen";
+  // andere route verbergen (handig bij samenvallende routes) of allebei tonen
+  if (toonAndere || heenAct) tekenEenRoute(L0().heen, heenLijn, heenLaag, heenAct); else { heenLaag.clearLayers(); heenLijn.setLatLngs([]); }
+  if (toonAndere || !heenAct) tekenEenRoute(L0().terug, terugLijn, terugLaag, !heenAct); else { terugLaag.clearLayers(); terugLijn.setLatLngs([]); }
+  stijlRoute(heenLijn, heenAct);
+  stijlRoute(terugLijn, !heenAct);
+  tekenStelplaatsen();
+  werkLengteBadgeBij();
+}
+function tekenStelplaatsen() {
+  if (!stelLaag) return;
+  stelLaag.clearLayers();
+  stelplaatsen.forEach((s, i) => {
+    const m = L.marker([s.lat, s.lon], { draggable: true, icon: stelIcon }).addTo(stelLaag).bindTooltip("🏠 " + (s.naam || ("Stelplaats " + (i + 1))), { direction: "right" });
+    m.on("dragstart", () => snap());
+    m.on("dragend", () => { const p = m.getLatLng(); s.lat = p.lat; s.lon = p.lng; toonDienstblad(); });
+  });
+}
+function voegStelplaatsToe(latlng) {
+  snap();
+  const n = stelplaatsen.length + 1;
+  stelplaatsen.push({ nr: String(n), naam: "Stelplaats " + n, afk: "", lat: latlng.lat, lon: latlng.lng });
+  tekenStelplaatsen(); tekenStelplaatsLijst(); toonDienstblad();
+}
+function tekenStelplaatsLijst() {
+  const el = $("stelplaatslijst");
+  el.innerHTML = stelplaatsen.length ? stelplaatsen.map((s, i) =>
+    `<div class="rij" style="gap:8px;margin:4px 0;align-items:flex-end"><div><label>Nummer</label><input data-si="${i}" data-k="nr" value="${esc(s.nr)}" style="width:80px"></div><div><label>Afk.</label><input data-si="${i}" data-k="afk" value="${esc(s.afk || "")}" placeholder="bv. LOK" style="width:74px"></div><div><label>Naam</label><input data-si="${i}" data-k="naam" value="${esc(s.naam)}" style="width:190px"></div><button class="no" data-weg="${i}">✕</button></div>`
+  ).join("") : `<span class="muted">Nog geen stelplaatsen — klik op de kaart in de modus "Stelplaats".</span>`;
+  el.querySelectorAll("input").forEach((inp) => inp.onchange = () => { snap(); stelplaatsen[+inp.dataset.si][inp.dataset.k] = inp.value; tekenStelplaatsen(); toonDienstblad(); });
+  el.querySelectorAll("button[data-weg]").forEach((b) => b.onclick = () => { snap(); stelplaatsen.splice(+b.dataset.weg, 1); tekenStelplaatsen(); tekenStelplaatsLijst(); toonDienstblad(); });
+}
+// Dichtstbijzijnde stelplaats bij een punt {lat,lon}; null als er geen stelplaatsen zijn.
+function dichtsteStelplaats(punt) {
+  let best = null, bd = Infinity;
+  for (const s of stelplaatsen) { const d = afstandMeter({ lat: s.lat, lon: s.lon }, punt); if (d < bd) { bd = d; best = s; } }
+  return best ? { stel: best, m: bd } : null;
+}
+function dodeTijd(m) { return Math.max(1, Math.round((m / 1000) / kmu() * 60)); }
+function tekenHalteTabel() {
+  const hs = actieveHaltes();
+  const tb = $("haltetabel").querySelector("tbody");
+  tb.innerHTML = hs.map((h, i) =>
+    `<tr><td class="n">${i + 1}</td>` +
+    `<td><input data-i="${i}" data-k="naam" value="${esc(h.naam)}" style="width:100%"></td>` +
+    `<td>${i < hs.length - 1 ? `<input class="n" type="number" min="0" max="600" data-i="${i}" data-k="reistijd" value="${h.reistijd}" style="width:80px">` : "<span class=muted>eindpunt</span>"}</td>` +
+    `<td>${i < hs.length - 1 ? `<button data-op="vast" data-i="${i}" title="${h.vast ? "Dit stuk is vastgezet — klik om vrij te geven (Volg de weg herberekent het weer)" : "Dit stuk vastzetten — Volg de weg laat het staan"}">${h.vast ? "🔒" : "🔓"}</button>` : ""}<button data-op="omhoog" data-i="${i}">↑</button><button data-op="omlaag" data-i="${i}">↓</button><button data-op="invoeg" data-i="${i}" title="Halte hierna invoegen">＋</button><button class="no" data-op="weg" data-i="${i}">✕</button></td></tr>`
+  ).join("") || `<tr><td colspan="4" class="muted">Nog geen haltes op deze route — klik op de kaart.</td></tr>`;
+  tb.querySelectorAll("input").forEach((inp) => inp.onchange = () => {
+    snap();
+    const i = +inp.dataset.i, k = inp.dataset.k;
+    if (k === "reistijd") hs[i].reistijd = Math.max(0, Math.min(600, Math.round(+inp.value || 0)));
+    else hs[i][k] = inp.value;
+    planBewaar();
+  });
+  tb.querySelectorAll("button").forEach((btn) => btn.onclick = () => {
+    snap();
+    const i = +btn.dataset.i, op = btn.dataset.op;
+    if (op === "vast") { hs[i].vast = !hs[i].vast; tekenHalteTabel(); tekenKaart(); planBewaar(); return; }
+    if (op === "weg") {
+      // Een tussenhalte verwijderen zonder de getekende lijn te wijzigen: de halte wordt
+      // een vormpunt op het vorige segment, zodat het pad exact hetzelfde blijft lopen.
+      if (i > 0 && i < hs.length - 1) hs[i - 1].vorm = [...(hs[i - 1].vorm || []), { lat: hs[i].lat, lon: hs[i].lon }, ...(hs[i].vorm || [])];
+      hs.splice(i, 1);
+    }
+    else if (op === "omhoog" && i > 0) [hs[i - 1], hs[i]] = [hs[i], hs[i - 1]];
+    else if (op === "omlaag" && i < hs.length - 1) [hs[i + 1], hs[i]] = [hs[i], hs[i + 1]];
+    else if (op === "invoeg") voegHalteOpSegmentToe(hs, i); // halte invoegen ÓP de getekende lijn (route blijft staan)
+    herberekenHaltes(hs); tekenKaart(); tekenHalteTabel();
+  });
+  planBewaar();
+}
+
+// --- GPX import --------------------------------------------------------------
+function decimeer(arr, max) { if (arr.length <= max) return arr; const stap = Math.ceil(arr.length / max); return arr.filter((_, i) => i % stap === 0 || i === arr.length - 1); }
+function importGPX(tekst) {
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("Kon het GPX-bestand niet lezen.");
+  snap();
+  // namespace-onafhankelijk ophalen (GPX heeft meestal een default-namespace)
+  const haal = (tag) => [...doc.getElementsByTagNameNS("*", tag)].map((p) => { const n = p.getElementsByTagNameNS("*", "name")[0]; return { lat: +p.getAttribute("lat"), lon: +p.getAttribute("lon"), naam: (n && n.textContent || "").trim() }; }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  const wpt = haal("wpt"), rtept = haal("rtept"), trkpt = haal("trkpt");
+  const stops = wpt.length >= 2 ? wpt : (rtept.length >= 2 ? rtept : []);
+  bouwRouteUitPunten(stops, trkpt, "GPX-bestand");
+}
+// Gedeelde logica: zet benoemde punten (haltes) + een lijn (vorm) om naar de haltes van de route.
+// stops = haltes met naam; track = de doorlopende routelijn. Minstens twee haltes óf een lijn nodig.
+function bouwRouteUitPunten(stops, track, bron) {
+  let hs;
+  if (stops.length >= 2) {
+    // benoemde punten = haltes (stopplaatsen). Een bijhorende lijn wordt als vorm tussen de haltes gelegd.
+    hs = stops.map((p, i) => ({ naam: p.naam || ((route === "heen" ? "H" : "T") + (i + 1)), lat: p.lat, lon: p.lon, reistijd: 0, vorm: [] }));
+    if (track.length >= 2) verdeelVormOverHaltes(hs, track);
+  } else if (track.length >= 2) {
+    // enkel een lijn: begin- en eindpunt worden haltes, alle tussenpunten volgen exact de baan als vorm.
+    const t = track;
+    hs = [{ naam: route === "heen" ? "H1" : "T1", lat: t[0].lat, lon: t[0].lon, reistijd: 0, vorm: decimeer(t.slice(1, -1), 250).map((p) => ({ lat: p.lat, lon: p.lon })) },
+          { naam: route === "heen" ? "H2" : "T2", lat: t[t.length - 1].lat, lon: t[t.length - 1].lon, reistijd: 0, vorm: [] }];
+  } else {
+    throw new Error("Geen bruikbare punten in het " + (bron || "bestand") + ".");
+  }
+  herberekenHaltes(hs);
+  L0()[route] = hs;
+  tekenKaart(); tekenHalteTabel();
+  const alle = hs.flatMap((h) => [[h.lat, h.lon], ...(h.vorm || []).map((v) => [v.lat, v.lon])]);
+  if (alle.length) kaart.fitBounds(alle, { padding: [30, 30] });
+  // Meteen op de echte wegen leggen (geen knop drukken). Een rare omweg wordt automatisch geweigerd,
+  // zodat de geïmporteerde lijn behouden blijft waar de router er een lusje van zou maken.
+  if ($("autoweg") && $("autoweg").checked && hs.length >= 2) volgDeWeg(true);
+}
+// --- KML / KMZ import (bv. een route getekend in Google My Maps) -------------
+// KML-coördinaten zijn "lon,lat[,hoogte]" gescheiden door witruimte (lon staat dus vóór lat).
+function kmlCoords(txt) {
+  return String(txt || "").trim().split(/\s+/).map((s) => {
+    const a = s.split(","); const lon = +a[0], lat = +a[1];
+    return { lat, lon };
+  }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+}
+function importKML(tekst) {
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("Kon het KML-bestand niet lezen.");
+  snap();
+  const placemarks = [...doc.getElementsByTagNameNS("*", "Placemark")];
+  const stops = [], track = [];
+  for (const pm of placemarks) {
+    const nEl = pm.getElementsByTagNameNS("*", "name")[0];
+    const naam = (nEl && nEl.textContent || "").trim();
+    for (const pt of [...pm.getElementsByTagNameNS("*", "Point")]) {
+      const cEl = pt.getElementsByTagNameNS("*", "coordinates")[0];
+      const c = kmlCoords(cEl && cEl.textContent); if (c[0]) stops.push({ lat: c[0].lat, lon: c[0].lon, naam });
+    }
+    for (const ln of [...pm.getElementsByTagNameNS("*", "LineString")]) {
+      const cEl = ln.getElementsByTagNameNS("*", "coordinates")[0];
+      track.push(...kmlCoords(cEl && cEl.textContent));
+    }
+  }
+  if (!stops.length && !track.length) throw new Error("Geen punten of lijn in het KML-bestand.");
+  bouwRouteUitPunten(stops, track, "KML-bestand");
+}
+// KMZ = een ZIP met een doc.kml erin. We lezen de local file headers en pakken de eerste .kml uit
+// (opgeslagen of met deflate, via de ingebouwde DecompressionStream). Zo is er geen externe bibliotheek nodig.
+async function kmzNaarKml(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), td = new TextDecoder();
+  let off = 0;
+  while (off + 30 <= u8.length) {
+    if (dv.getUint32(off, true) !== 0x04034b50) break;
+    const flags = dv.getUint16(off + 6, true), method = dv.getUint16(off + 8, true);
+    const compSize = dv.getUint32(off + 18, true);
+    const nameLen = dv.getUint16(off + 26, true), extraLen = dv.getUint16(off + 28, true);
+    const naam = td.decode(u8.subarray(off + 30, off + 30 + nameLen));
+    const dataStart = off + 30 + nameLen + extraLen;
+    if (flags & 0x08) throw new Error("Deze KMZ is niet leesbaar (gestreamd). Exporteer in My Maps als KML.");
+    const comp = u8.subarray(dataStart, dataStart + compSize);
+    if (/\.kml$/i.test(naam)) {
+      if (method === 0) return td.decode(comp);
+      if (method === 8) return await new Response(new Blob([comp]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      throw new Error("Compressiemethode in de KMZ wordt niet ondersteund.");
+    }
+    off = dataStart + compSize;
+  }
+  throw new Error("Geen KML gevonden in het KMZ-bestand.");
+}
+// Verdeel een track (lijst punten) als vormpunten over de segmenten tussen opeenvolgende haltes,
+// op basis van het trackpunt dat het dichtst bij elke halte ligt.
+function verdeelVormOverHaltes(hs, track) {
+  const idx = hs.map((h) => { let bi = 0, bd = Infinity; for (let i = 0; i < track.length; i++) { const d = afstandMeter(h, track[i]); if (d < bd) { bd = d; bi = i; } } return bi; });
+  for (let i = 1; i < idx.length; i++) if (idx[i] <= idx[i - 1]) idx[i] = idx[i - 1] + 1;
+  for (let i = 0; i < hs.length - 1; i++) hs[i].vorm = decimeer(track.slice(idx[i] + 1, idx[i + 1]), 250).map((p) => ({ lat: p.lat, lon: p.lon }));
+  if (hs.length) hs[hs.length - 1].vorm = [];
+}
+// Leg de actieve route op de weg via de gratis OSRM-router (voetganger-profiel: ligt in het midden
+// van de baan en negeert eenrichting / verboden-in-te-rijden). Belangrijk: de punten die je zelf
+// tekende (de vormpunten van een stuk) worden als TUSSENPUNTEN (via-waypoints) meegegeven, zodat de
+// router de straten volgt die JIJ bedoelde in plaats van zelf de snelste weg te kiezen. Teken dus een
+// ruwe lijn langs de juiste straten en druk "Volg de weg" — meestal hoef je daarna niets meer aan te
+// passen. Vastgezette stukken (🔒) en stukken die de router niet kan berekenen blijven staan.
+async function volgDeWeg(behoudHaltes) {
+  const hs = actieveHaltes();
+  if (hs.length < 2) { if (!behoudHaltes) alert("Teken eerst minstens twee haltes."); return; }
+  if (!behoudHaltes) snap();
+  let gedaan = 0, vast = 0, mislukt = 0, omgereden = 0;
+  for (let i = 0; i < hs.length - 1; i++) {
+    if (hs[i].vast) { vast++; continue; }                       // vastgezet stuk ongemoeid laten
+    $("fout").textContent = `Route op de weg leggen… (${i + 1}/${hs.length - 1})`;
+    const a = hs[i], b = hs[i + 1];
+    // de getekende tussenpunten van dit stuk als corridor meegeven (gedund tot max 23, zodat de
+    // router-aanvraag kort blijft maar je getekende vorm wel gevolgd wordt)
+    const via = decimeer((hs[i].vorm || []).filter((v) => Number.isFinite(v.lat) && Number.isFinite(v.lon)), 23);
+    const punten = [[a.lon, a.lat], ...via.map((v) => [v.lon, v.lat]), [b.lon, b.lat]];
+    const coords = punten.map((p) => p[0] + "," + p[1]).join(";");
+    let d;
+    try {
+      const r = await fetch(`${OSRM}${coords}?overview=full&geometries=geojson&steps=false&continue_straight=false`);
+      d = await r.json();
+    } catch (e) { mislukt++; continue; }                        // netwerkfout: bestaande vorm laten staan
+    if (!d || d.code !== "Ok" || !d.routes || !d.routes[0]) { mislukt++; continue; } // onroutebaar stuk: laten staan
+    const geo = d.routes[0].geometry.coordinates;               // [[lon,lat], …] incl. begin- en eindpunt
+    // Lengte van de getekende corridor (wat JIJ bedoelde) vs. de gesnapte route. Maakt de router er
+    // een forse omweg van (bv. een lusje door de voetpaden aan een station), dan houden we jóuw lijn.
+    const lenVan = (pts) => { let s = 0; for (let k = 1; k < pts.length; k++) s += afstandMeter({ lat: pts[k - 1][1], lon: pts[k - 1][0] }, { lat: pts[k][1], lon: pts[k][0] }); return s; };
+    const corridor = lenVan(punten), snapLen = lenVan(geo);
+    if (snapLen - corridor > 150 && snapLen > corridor * 1.5) { omgereden++; continue; } // rare omweg: getekende vorm behouden
+    hs[i].vorm = decimeer(geo.slice(1, -1), 250).map((c) => ({ lat: c[1], lon: c[0] })); // enkel de tussenpunten
+    gedaan++;
+  }
+  hs[hs.length - 1].vorm = [];
+  herberekenHaltes(hs); tekenKaart(); tekenHalteTabel();
+  if (behoudHaltes) { $("fout").textContent = ""; return; }
+  const delen = [];
+  if (gedaan) delen.push(`${gedaan} stuk${gedaan > 1 ? "ken" : ""} op de weg gelegd`);
+  if (vast) delen.push(`${vast} vastgezet stuk${vast > 1 ? "ken" : ""} behouden`);
+  if (omgereden) delen.push(`${omgereden} stuk${omgereden > 1 ? "ken maakten" : " maakte"} een rare omweg — jouw getekende lijn behouden`);
+  if (mislukt) delen.push(`${mislukt} stuk${mislukt > 1 ? "ken" : ""} niet berekend — teken dit zelf en zet het op slot (🔒)`);
+  const waarschuw = mislukt || omgereden;
+  $("fout").textContent = waarschuw ? ("Let op: " + delen.join("; ") + ".") : "";
+  if (!waarschuw) setTimeout(() => { $("fout").textContent = ""; }, 4000);
+}
+
+// --- Lijnen beheren ----------------------------------------------------------
+let publiekHaltebord = false;  // haltebord-QR openbaar (zonder login) leesbaar
+function leesNetForm() {
+  netNaam = $("naam").value;
+  if ($("publiekHaltebord")) publiekHaltebord = !!$("publiekHaltebord").checked;
+  if ($("omloopStart")) omloopStart = Math.max(1, Math.round(+$("omloopStart").value || 1)); else if (omloopStart == null) omloopStart = 1;
+  ritStart = Math.max(0, Math.round(+$("ritStart").value || 1)); ritModus = $("ritModus").value;
+  aanmeld = Math.max(0, Math.min(120, Math.round(+$("mAanmeld").value || 0))); afmeld = Math.max(0, Math.min(120, Math.round(+$("mAfmeld").value || 0)));
+}
+function toonNetForm() {
+  $("naam").value = netNaam;
+  if ($("omloopStart")) $("omloopStart").value = omloopStart == null ? 1 : omloopStart;
+  $("ritStart").value = ritStart == null ? 1 : ritStart; $("ritModus").value = ritModus === "omloop" ? "omloop" : "doorlopend";
+  $("mAanmeld").value = aanmeld == null ? 5 : aanmeld; $("mAfmeld").value = afmeld == null ? 10 : afmeld;
+  if ($("publiekHaltebord")) $("publiekHaltebord").checked = !!publiekHaltebord;
+}
+function leesLijnForm() {
+  const l = L0();
+  l.lijn = $("lijn").value;
+  l.venster = { van: $("van").value, tot: $("tot").value };
+  l.vensterT = { van: $("vanT").value, tot: $("totT").value };
+  l.terugAuto = !!($("terugAuto") && $("terugAuto").checked);
+  l.frequentie = +$("freq").value; l.keertijd = +$("keer").value; l.richtingen = $("richting").value;
+  l.dagen = [...document.querySelectorAll("#dagen input:checked")].map((i) => +i.value);
+}
+// Terug-vertrekvelden tonen/verbergen naargelang de richting (bij "enkel heen" zijn ze overbodig).
+function zetTerugVelden() {
+  const beide = $("richting").value !== "heen";
+  const auto = !!($("terugAuto") && $("terugAuto").checked);
+  if ($("terugAutoRij")) $("terugAutoRij").style.display = beide ? "" : "none";
+  // De vaste teruguren zijn overbodig bij "enkel heen" én bij automatisch aansluiten.
+  const toonTerugUren = beide && !auto;
+  if ($("terugVan")) $("terugVan").style.display = toonTerugUren ? "" : "none";
+  if ($("terugTot")) $("terugTot").style.display = toonTerugUren ? "" : "none";
+}
+function toonLijnForm() {
+  const l = L0();
+  $("lijn").value = l.lijn || "";
+  $("van").value = (l.venster && l.venster.van) || "06:00"; $("tot").value = (l.venster && l.venster.tot) || "22:00";
+  const vt = l.vensterT || l.venster || {};
+  $("vanT").value = vt.van || "06:00"; $("totT").value = vt.tot || "22:00";
+  if ($("terugAuto")) $("terugAuto").checked = !!l.terugAuto;
+  $("freq").value = l.frequentie || 20; $("keer").value = l.keertijd == null ? 5 : l.keertijd; $("richting").value = l.richtingen === "heen" ? "heen" : "beide";
+  document.querySelectorAll("#dagen input").forEach((i) => { i.checked = (l.dagen || []).includes(+i.value); });
+  zetTerugVelden();
+}
+function tekenLijntabs() {
+  $("lijntabs").innerHTML = lijnen.map((l, i) => `<button data-i="${i}" class="${i === actief ? "aan" : ""}">${esc(l.lijn ? "Lijn " + l.lijn : "Lijn " + (i + 1))}</button>`).join("") + `<button id="lijnbij" class="accent">+ lijn</button>`;
+  $("lijntabs").querySelectorAll("button[data-i]").forEach((b) => b.onclick = () => { leesLijnForm(); actief = +b.dataset.i; route = "heen"; zetRouteKnoppen(); tekenLijntabs(); toonLijnForm(); tekenKaart(); tekenHalteTabel(); });
+  $("lijnbij").onclick = () => { snap(); leesLijnForm(); lijnen.push(legeLijn()); actief = lijnen.length - 1; route = "heen"; zetRouteKnoppen(); tekenLijntabs(); toonLijnForm(); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+}
+function zetRouteKnoppen() { $("rtHeen").classList.toggle("aan", route === "heen"); $("rtTerug").classList.toggle("aan", route === "terug"); }
+function zetModusKnoppen() { $("modHalte").classList.toggle("aan", modus === "halte"); $("modVorm").classList.toggle("aan", modus === "vorm"); $("modStel").classList.toggle("aan", modus === "stelplaats"); if ($("modSleep")) $("modSleep").classList.toggle("aan", modus === "sleep"); }
+
+// --- Dienstblad --------------------------------------------------------------
+function ritduur(hs) { return hs.slice(0, -1).reduce((s, h) => s + (h.reistijd || 0), 0); }
+function omloopLabel(prefix, nr) { return (prefix ? prefix + "-" : "") + nr; }
+function dagenTekst(ds) {
+  const s = [...new Set(ds)].sort((a, b) => a - b); const runs = []; let i = 0;
+  while (i < s.length) { let j = i; while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++; runs.push(j > i ? DAGNAMEN[s[i]] + "–" + DAGNAMEN[s[j]] : DAGNAMEN[s[i]]); i = j + 1; }
+  return runs.join(", ");
+}
+// Volledige dienstregeling van één lijn als losse ritten (nog niet gekoppeld aan een omloop).
+function lijnRitten(l, li) {
+  const hVan = uurNaarMin(l.venster.van), hTot = uurNaarMin(l.venster.tot);
+  const vt = l.vensterT || l.venster;                           // terug mag een eigen venster hebben
+  const tVan = uurNaarMin(vt.van), tTot = uurNaarMin(vt.tot);
+  const freq = Math.max(1, Math.min(120, Math.round(l.frequentie || 20)));
+  const keer = Math.max(0, Math.min(120, Math.round(l.keertijd || 0)));
+  const beide = l.richtingen !== "heen";
+  const heen = l.heen, terug = (l.terug && l.terug.length >= 2) ? l.terug : l.heen.slice().reverse();
+  if (heen.length < 2) throw new Error(`Lijn ${l.lijn || "?"}: teken een heenroute van minstens twee haltes.`);
+  if (hVan == null || hTot == null || hTot < hVan) throw new Error(`Lijn ${l.lijn || "?"}: controleer het heen-tijdsvenster.`);
+  if (beide && (tVan == null || tTot == null || tTot < tVan)) throw new Error(`Lijn ${l.lijn || "?"}: controleer het terug-tijdsvenster.`);
+  const rdH = ritduur(heen), rdT = ritduur(terug);
+  if (rdH <= 0) throw new Error(`Lijn ${l.lijn || "?"}: de reistijd is 0 — vul reistijden in.`);
+  const hVanH = heen[0], hNaarH = heen[heen.length - 1], tVanH = terug[0], tNaarH = terug[terug.length - 1];
+  const hEerst = hVanH.naam, hLaatst = hNaarH.naam, tEerst = tVanH.naam, tLaatst = tNaarH.naam;
+  const ritten = [];
+  // We bewaren ook de start/eind-coördinaten, zodat het koppelen tot omlopen op plaats kan aansluiten
+  // (eind van de ene rit ≈ begin van de volgende), ook als heen en terug apart getekende routes zijn
+  // met verschillende haltenamen op het keerpunt.
+  const terugRit = (t) => ({ lijn: l.lijn, lijnIdx: li, richting: "terug", vertrek: t, aankomst: t + rdT, van: tEerst, naar: tLaatst, vanLat: tVanH.lat, vanLon: tVanH.lon, naarLat: tNaarH.lat, naarLon: tNaarH.lon, keer });
+  for (let t = hVan; t <= hTot; t += freq) {
+    ritten.push({ lijn: l.lijn, lijnIdx: li, richting: "heen", vertrek: t, aankomst: t + rdH, van: hEerst, naar: hLaatst, vanLat: hVanH.lat, vanLon: hVanH.lon, naarLat: hNaarH.lat, naarLon: hNaarH.lon, keer });
+    // Automatisch aansluiten: dezelfde bus keert meteen terug (vertrek = aankomst heen + keertijd).
+    if (beide && l.terugAuto) ritten.push(terugRit(t + rdH + keer));
+  }
+  if (beide && !l.terugAuto) for (let t = tVan; t <= tTot; t += freq) ritten.push(terugRit(t));
+  return { lijn: l.lijn, rdH, rdT, aantal: ritten.length, ritten };
+}
+// Sluit de vorige rit aan op de volgende? Het eind van de ene rit moet (ongeveer) op het begin van de
+// volgende liggen: ofwel dezelfde haltenaam, ofwel binnen ~300 m. Zo ketenen heen en terug aan elkaar,
+// ook als het keerpunt in beide routes een andere naam heeft (apart getekende heen- en terugroute).
+const AANSLUIT_M = 300;
+function ritSluitAan(last, r) {
+  if (last.naar && r.van && last.naar === r.van) return true;
+  if (last.naarLat == null || r.vanLat == null) return false;
+  return afstandMeter({ lat: last.naarLat, lon: last.naarLon }, { lat: r.vanLat, lon: r.vanLon }) <= AANSLUIT_M;
+}
+// Koppel ritten (binnen één daggroep) tot omlopen: een bus neemt een volgende rit alleen als ze aansluit
+// (eind ≈ begin) en er genoeg tijd is (aankomst + keertijd ≤ vertrek). Best-fit: pak de omloop die het
+// laatst aankwam. Zo rijdt één bus heen → terug → heen …, en kan ze na lijn A aansluitend op lijn B.
+function koppel(ritten) {
+  const gesorteerd = ritten.slice().sort((a, z) => a.vertrek - z.vertrek || a.lijnIdx - z.lijnIdx || (a.richting > z.richting ? 1 : -1));
+  const omlopen = [];
+  for (const r of gesorteerd) {
+    let beste = -1, besteAank = -1;
+    for (let i = 0; i < omlopen.length; i++) {
+      const last = omlopen[i].ritten[omlopen[i].ritten.length - 1];
+      if (ritSluitAan(last, r) && last.aankomst + last.keer <= r.vertrek && last.aankomst > besteAank) { beste = i; besteAank = last.aankomst; }
+    }
+    if (beste >= 0) omlopen[beste].ritten.push(r); else omlopen.push({ ritten: [r] });
+  }
+  return omlopen;
+}
+function genereerNet() {
+  if (!lijnen.length) throw new Error("Voeg minstens één lijn toe.");
+  const perLijn = lijnen.map((l, li) => lijnRitten(l, li));
+  // daggroepen: dagen 1..7 met exact dezelfde set actieve lijnen horen bij elkaar
+  const groepen = {};
+  for (let d = 1; d <= 7; d++) {
+    const act = lijnen.map((l, li) => li).filter((li) => (lijnen[li].dagen || []).includes(d));
+    if (!act.length) continue;
+    const sig = act.join(",");
+    (groepen[sig] = groepen[sig] || { dagen: [], lijnIdxs: act }).dagen.push(d);
+  }
+  const groeplijst = Object.values(groepen).sort((a, z) => a.dagen[0] - z.dagen[0]);
+  if (!groeplijst.length) throw new Error("Geen enkele lijn heeft rijdagen — vink minstens één dag aan.");
+  // Stap 1: per daggroep de volledige dagplanning (alle ritten) met een automatisch voorgestelde omloop,
+  // die de gebruiker per rit kan overschrijven via omloopToewijzing.
+  const dag = [];
+  let omloopNr = omloopStart == null ? 1 : omloopStart;
+  for (const g of groeplijst) {
+    const sig = g.lijnIdxs.join(",");
+    const pool = g.lijnIdxs.flatMap((li) => perLijn[li].ritten.map((r) => ({ ...r })));
+    pool.forEach((r) => { r.dagKey = sig + "#" + r.lijnIdx + "|" + r.richting + "|" + r.vertrek; });
+    for (const o of koppel(pool)) { const nr = omloopNr++; o.ritten.forEach((r) => { r.autoNr = nr; }); } // koppel pusht referenties
+    pool.forEach((r) => { const ov = omloopToewijzing[r.dagKey]; r.omloopNr = (ov != null && ov !== "" && Number.isFinite(+ov)) ? +ov : r.autoNr; });
+    pool.sort((a, z) => a.vertrek - z.vertrek || a.lijnIdx - z.lijnIdx);
+    dag.push({ dagen: g.dagen.slice(), sig, ritten: pool });
+  }
+  // Stap 2: omlopen vormen door de ritten per daggroep te groeperen op hun (auto of gekozen) omloopnummer.
+  const omlopen = [];
+  for (const grp of dag) {
+    const byNr = {};
+    grp.ritten.forEach((r) => { (byNr[r.omloopNr] = byNr[r.omloopNr] || []).push(r); });
+    Object.keys(byNr).sort((a, z) => (+a) - (+z)).forEach((nr) => {
+      const ritten = byNr[nr].slice().sort((a, z) => a.vertrek - z.vertrek);
+      const eerste = ritten[0], h0 = richtingHaltes(lijnen[eerste.lijnIdx], eerste.richting)[0];
+      const home = dichtsteStelplaats({ lat: h0.lat, lon: h0.lon });
+      // overlap: rijdt de bus twee ritten tegelijk?
+      let overlap = false; for (let i = 1; i < ritten.length; i++) if (ritten[i].vertrek < ritten[i - 1].aankomst) overlap = true;
+      omlopen.push({ omloop: omloopLabel(home ? home.stel.nr : "", nr), nr: +nr, dagen: grp.dagen.slice(), ritten, overlap });
+    });
+  }
+  // ritnummering over de omlopen heen (net-niveau), met handmatige overschrijvingen uit ritNrs.
+  // Heenritten krijgen altijd EVEN nummers (2,4,6,…), terugritten altijd ONEVEN nummers (3,5,7,…).
+  const basis = ritStart == null ? 1 : ritStart;
+  const evenBasis = basis % 2 === 0 ? basis : basis + 1;   // heen vertrekt van een even nummer
+  let heenT = evenBasis, terugT = evenBasis + 1;           // terug = oneven
+  for (const o of omlopen) {
+    if (ritModus === "omloop") { heenT = evenBasis; terugT = evenBasis + 1; }
+    o.ritten.forEach((r, i) => {
+      r.ritKey = o.omloop + "#" + i;
+      const ov = ritNrs[r.ritKey];
+      if (ov != null && ov !== "") { r.ritNr = String(ov); return; } // handmatige override blijft gerespecteerd
+      if (r.richting === "terug") { r.ritNr = String(terugT); terugT += 2; }
+      else { r.ritNr = String(heenT); heenT += 2; }
+    });
+  }
+  return { omlopen, perLijn, dag };
+}
+// De haltereeks van een lijn in de gevraagde richting (terug = aparte route, of omgekeerde heen).
+function richtingHaltes(l, richting) {
+  const terug = (l.terug && l.terug.length >= 2) ? l.terug : l.heen.slice().reverse();
+  return richting === "terug" ? terug : l.heen;
+}
+// Afstand (km) langs de (eventueel vervormde) route.
+function routeAfstandKm(hs) { let m = 0; for (let i = 0; i < hs.length - 1; i++) m += segAfstand(hs[i], hs[i + 1]); return m / 1000; }
+// Passeeruren per halte voor één rit: start op het vertrekuur, tel de reistijd per halte op.
+function ritPasseer(r) {
+  const hs = richtingHaltes(lijnen[r.lijnIdx], r.richting);
+  let t = r.vertrek; const out = [];
+  for (let i = 0; i < hs.length; i++) { out.push({ naam: hs[i].naam, tijd: t, rand: i === 0 || i === hs.length - 1 }); t += (hs[i].reistijd || 0); }
+  return out;
+}
+const duurTekst = (m) => Math.floor(m / 60) + ":" + pad(m % 60);
+// Piek aantal gelijktijdig rijdende voertuigen over een lijst stempelvensters [van,tot] (minuten).
+// Dit is het aantal bussen dat je op het drukste moment nodig hebt.
+function piekVoertuigen(vensters) {
+  const ev = [];
+  vensters.forEach((v) => { ev.push([v.van, 1]); ev.push([v.tot, -1]); });
+  ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // bij gelijke tijd eerst afmelden (-1), dan aanmelden (+1)
+  let c = 0, m = 0; for (const [, d] of ev) { c += d; if (c > m) m = c; } return m;
+}
+// Samenvatting per rijdaggroep: per omloop km/rijtijd/pauze/diensttijd/productiviteit, met subtotaal
+// en het piek-aantal bussen (materiaalbehoefte) voor die groep.
+function bouwStat(stats) {
+  if (!stats.length) return "";
+  const groepen = {};
+  stats.forEach((s) => { (groepen[s.groep] = groepen[s.groep] || []).push(s); });
+  let out = `<h2 style="margin-top:14px">Samenvatting &amp; materiaalbehoefte</h2>`;
+  Object.keys(groepen).forEach((g) => {
+    const rij = groepen[g];
+    const pk = piekVoertuigen(rij.map((s) => ({ van: s.van, tot: s.tot })));
+    let sKm = 0, sDienst = 0, sRij = 0, sRitten = 0;
+    const trs = rij.map((s) => {
+      const km = s.kmRij + s.kmDood; sKm += km; sDienst += s.dienstMin; sRij += s.rijMin; sRitten += s.ritten;
+      const prod = s.dienstMin > 0 ? Math.round(s.rijMin / s.dienstMin * 100) : 0;
+      return `<tr><td>${esc(s.omloop)}</td><td class="n">${s.ritten}</td><td class="n">${duurTekst(s.rijMin)}</td><td class="n">${duurTekst(s.pauzeMin)}</td><td class="n">${duurTekst(s.dienstMin)}</td><td class="n">${km.toFixed(1)}</td><td class="n">${prod}%</td><td>${s.overlap ? '<span class="waarschuw">⚠</span>' : ""}</td></tr>`;
+    }).join("");
+    out += `<div class="omloopblok"><div class="omloopkop">${esc(g)} — ${rij.length} omloop(en) · <b>${pk} bus(sen) nodig</b> <span class="muted">(piek gelijktijdig)</span></div>
+      <table><thead><tr><th>Omloop</th><th>Ritten</th><th>Rijtijd</th><th>Pauze</th><th>Diensttijd</th><th>km</th><th>Productiviteit</th><th></th></tr></thead>
+      <tbody>${trs}</tbody>
+      <tfoot><tr style="font-weight:700"><td>Totaal</td><td class="n">${sRitten}</td><td class="n">${duurTekst(sRij)}</td><td></td><td class="n">${duurTekst(sDienst)}</td><td class="n">${sKm.toFixed(1)}</td><td class="n">${sDienst > 0 ? Math.round(sRij / sDienst * 100) : 0}%</td><td></td></tr></tfoot></table></div>`;
+  });
+  return out;
+}
+// --- CSV-export --------------------------------------------------------------
+function naarCSV(rijen) {
+  return "﻿" + rijen.map((r) => r.map((c) => { const s = String(c == null ? "" : c); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(";")).join("\r\n");
+}
+function downloadCSV(naam, tekst) {
+  const b = new Blob([tekst], { type: "text/csv;charset=utf-8" });
+  const u = URL.createObjectURL(b); const a = document.createElement("a");
+  a.href = u; a.download = naam; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+}
+function veiligeNaam() { return (netNaam || "net").replace(/[^\w.-]+/g, "_"); }
+function exportDagplanningCSV() {
+  const res = toonDienstblad(); if (!res) return;
+  const rows = [["Rijdagen", "Vertrek", "Aankomst", "Lijn", "Richting", "Van", "Naar", "Omloop"]];
+  res.dag.forEach((grp) => { const g = dagenTekst(grp.dagen); grp.ritten.forEach((r) => rows.push([g, minNaarUur(r.vertrek), minNaarUur(r.aankomst), r.lijn || "", r.richting, r.van, r.naar, r.omloopNr])); });
+  downloadCSV(veiligeNaam() + "-dagplanning.csv", naarCSV(rows));
+}
+function exportOmlopenCSV() {
+  const res = toonDienstblad(); if (!res) return;
+  const rows = [["Omloop", "Rijdagen", "RitNr", "Lijn", "Richting", "Vertrek", "Aankomst", "Van", "Naar"]];
+  res.omlopen.forEach((o) => { const g = dagenTekst(o.dagen); o.ritten.forEach((r) => rows.push([o.omloop, g, r.ritNr, r.lijn || "", r.richting, minNaarUur(r.vertrek), minNaarUur(r.aankomst), r.van, r.naar])); });
+  downloadCSV(veiligeNaam() + "-omlopen.csv", naarCSV(rows));
+}
+// Volledige dagplanning: alle ritten per daggroep, met per rit een (voorgesteld) omloopnummer dat de
+// gebruiker kan wijzigen. De dienstbladen hieronder volgen die indeling.
+function toonDagplanning(dag) {
+  const el = $("dagplanning"); if (!el) return;
+  const blok = dag.map((grp) => {
+    const rijen = grp.ritten.map((r) =>
+      `<tr><td class="n">${esc(r.ritNr != null ? r.ritNr : "")}</td><td class="n">${minNaarUur(r.vertrek)}</td><td class="n">${minNaarUur(r.aankomst)}</td><td>${esc(r.lijn || "?")}</td><td>${r.richting}</td><td>${esc(r.van)} → ${esc(r.naar)}</td><td><input class="omlnr n" data-dag="${esc(r.dagKey)}" value="${esc(r.omloopNr)}" style="width:70px"></td></tr>`
+    ).join("");
+    return `<div class="omloopblok"><div class="omloopkop">${esc(dagenTekst(grp.dagen))} — ${grp.ritten.length} ritten</div>
+      <table><thead><tr><th>Ritnr</th><th>Vertrek</th><th>Aankomst</th><th>Lijn</th><th>Richting</th><th>Traject</th><th>Omloop</th></tr></thead><tbody>${rijen}</tbody></table></div>`;
+  }).join("");
+  el.innerHTML = blok;
+  el.querySelectorAll("input.omlnr").forEach((inp) => inp.onchange = () => {
+    if (!omloopToewijzing || typeof omloopToewijzing !== "object") omloopToewijzing = {};
+    const v = inp.value.trim();
+    snap();
+    if (v === "" || !Number.isFinite(+v)) delete omloopToewijzing[inp.dataset.dag]; else omloopToewijzing[inp.dataset.dag] = Math.round(+v);
+    toonDienstblad();
+  });
+}
+function toonDienstblad() {
+  leesNetForm(); leesLijnForm();
+  $("fout").textContent = ""; $("status").textContent = "";
+  let res;
+  try { res = genereerNet(); } catch (e) { $("fout").textContent = e.message; $("dienstblad").innerHTML = ""; return null; }
+  const { omlopen, perLijn, dag } = res;
+  toonDagplanning(dag);
+  const overzicht = perLijn.map((p) => `Lijn ${esc(p.lijn || "?")}: heen ${p.rdH} min${p.rdT !== p.rdH ? " / terug " + p.rdT + " min" : ""}, ${p.aantal} ritten/dag`).join(" · ");
+  const totRitten = omlopen.reduce((s, o) => s + o.ritten.length, 0);
+  const metOverlap = omlopen.filter((o) => o.overlap).length;
+  const stelAfk = (st) => st ? ((st.afk && st.afk.trim()) ? st.afk.trim() : st.nr) : "";
+  const halteRij = (naam, tijd, rand) => `<div class="db-rij${rand ? " rand" : ""}"><span class="db-naam">${esc(naam)}</span><span class="db-leader"></span><span class="db-tijd">${minNaarUur(tijd)}</span></div>`;
+  const dodeBlok = (eerste, label, vanNaam, naarNaam, m, vertrek, aankomst) =>
+    `<div class="db-blok db-dood${eerste ? " eerste" : ""}"><div class="db-code">— / ${label} / ${(m / 1000).toFixed(3)} km</div>` +
+    halteRij(vanNaam, vertrek, true) + halteRij(naarNaam, aankomst, true) + `</div>`;
+  const nu = new Date();
+  const datumStr = String(nu.getDate()).padStart(2, "0") + "/" + String(nu.getMonth() + 1).padStart(2, "0") + "/" + nu.getFullYear();
+  const statRijen = [];
+  const vellen = omlopen.map((o) => {
+    const eersteRit = o.ritten[0], laatsteRit = o.ritten[o.ritten.length - 1];
+    const beginTijd = eersteRit.vertrek, eindTijd = laatsteRit.aankomst;
+    const h0 = richtingHaltes(lijnen[eersteRit.lijnIdx], eersteRit.richting)[0];
+    const eindHs = richtingHaltes(lijnen[laatsteRit.lijnIdx], laatsteRit.richting); const hN = eindHs[eindHs.length - 1];
+    // uitrit vanaf de dichtste stelplaats naar de eerste halte; inrit van de laatste halte naar de dichtste stelplaats
+    const uit = dichtsteStelplaats({ lat: h0.lat, lon: h0.lon });
+    const inr = dichtsteStelplaats({ lat: hN.lat, lon: hN.lon });
+    const uitTijd = uit ? dodeTijd(uit.m) : 0, inTijd = inr ? dodeTijd(inr.m) : 0;
+    const uitVertrek = beginTijd - uitTijd;              // vertrek stelplaats, aankomst = eerste vertrek
+    const inAankomst = eindTijd + inTijd;                // vertrek = laatste aankomst, aankomst stelplaats
+    const stempelAan = (uit ? uitVertrek : beginTijd) - (aanmeld || 0);
+    const stempelAf = (inr ? inAankomst : eindTijd) + (afmeld || 0);
+    const beginPlaats = uit ? stelAfk(uit.stel) : h0.naam;
+    const eindPlaats = inr ? stelAfk(inr.stel) : hN.naam;
+    // Statistiek van deze omloop verzamelen voor het samenvattingspaneel.
+    const kmRij = o.ritten.reduce((s, r) => s + routeAfstandKm(richtingHaltes(lijnen[r.lijnIdx], r.richting)), 0);
+    const rijMin = o.ritten.reduce((s, r) => s + (r.aankomst - r.vertrek), 0);
+    let pauzeMin = 0; for (let i = 1; i < o.ritten.length; i++) { const g = o.ritten[i].vertrek - o.ritten[i - 1].aankomst; if (g > 0) pauzeMin += g; }
+    statRijen.push({ omloop: o.omloop, groep: dagenTekst(o.dagen), kmRij, kmDood: ((uit ? uit.m : 0) + (inr ? inr.m : 0)) / 1000, rijMin, pauzeMin, dienstMin: stempelAf - stempelAan, van: stempelAan, tot: stempelAf, ritten: o.ritten.length, overlap: o.overlap });
+    const blokken = [];
+    if (uit) blokken.push(dodeBlok(true, "OUT", uit.stel.naam, h0.naam, uit.m, uitVertrek, beginTijd));
+    o.ritten.forEach((r, i) => {
+      const hs = richtingHaltes(lijnen[r.lijnIdx], r.richting);
+      const km = routeAfstandKm(hs).toFixed(3);
+      const eerste = (i === 0 && !uit) ? " eerste" : "";
+      let blok = `<div class="db-blok${eerste}"><div class="db-code">Lijn ${esc(r.lijn || "?")} / rit <input class="ritnr" data-key="${esc(r.ritKey)}" value="${esc(r.ritNr)}"> / ${km} km</div>`;
+      blok += ritPasseer(r).map((h) => halteRij(h.naam, h.tijd, h.rand)).join("");
+      const vlg = o.ritten[i + 1];
+      if (vlg) { const gap = vlg.vertrek - r.aankomst; if (gap > 0) blok += `<div class="db-pauze"><span class="db-naam">Pauze</span><span class="db-leader"></span><span class="db-tijd">${duurTekst(gap)}</span></div>`; }
+      blok += `</div>`;
+      blokken.push(blok);
+    });
+    if (inr) blokken.push(dodeBlok(false, "Empty", hN.naam, inr.stel.naam, inr.m, eindTijd, inAankomst));
+    return `<div class="db-vel">
+      <div class="db-kop"><div class="db-kop-naam">${esc(netNaam || "Eigen net")}</div><div class="db-kop-datum">Ingaande: ${datumStr}</div></div>
+      <div class="db-kop2">
+        <div class="db-loop"><div class="db-loop-groep">Lijn ${esc(eersteRit.lijn || "?")}</div><div class="db-loop-nr">${esc(o.omloop)}</div></div>
+        <table class="db-stempel"><thead><tr><th>Dienst<br>Type</th><th>Dienstnr</th><th>Stempel<br>uur</th><th>Begin<br>plaats</th><th>Begin<br>tijd</th><th>Einde<br>tijd</th><th>Einde<br>plaats</th><th>Stempel<br>uur</th></tr></thead>
+        <tbody><tr><td>st</td><td>${esc(o.omloop)}</td><td>${minNaarUur(stempelAan)}</td><td>${esc(beginPlaats)}</td><td>${minNaarUur(uit ? uitVertrek : beginTijd)}</td><td>${minNaarUur(inr ? inAankomst : eindTijd)}</td><td>${esc(eindPlaats)}</td><td>${minNaarUur(stempelAf)}</td></tr></tbody></table>
+      </div>
+      <div class="db-dagen" style="margin-bottom:8px">Rijdagen: ${esc(dagenTekst(o.dagen))} · ${o.ritten.length} ritten${o.overlap ? ` · <span class="waarschuw">⚠ overlappende ritten</span>` : ""}</div>
+      <div class="db-kolommen">${blokken.join("")}</div></div>`;
+  }).join("");
+  $("netstat").innerHTML = bouwStat(statRijen);
+  simData = bouwSimulatie(res); simZetBereik(); if (!simSpelen) tekenSim();
+  $("dienstblad").innerHTML = `<div class="saldo" style="margin:6px 0">${overzicht}</div><div class="saldo">${omlopen.length} omloop(en), ${totRitten} ritten in totaal.${metOverlap ? ` <span class="waarschuw">${metOverlap} omloop(en) met overlappende ritten.</span>` : ""}</div>` + vellen;
+  $("dienstblad").querySelectorAll("input.ritnr").forEach((inp) => inp.onchange = () => {
+    if (!ritNrs || typeof ritNrs !== "object") ritNrs = {};
+    const v = inp.value.trim();
+    snap();
+    if (v === "") delete ritNrs[inp.dataset.key]; else ritNrs[inp.dataset.key] = v;
+    toonDienstblad();
+  });
+  planBewaar();
+  return res;
+}
+
+// --- Bewaren / laden ---------------------------------------------------------
+// Projectie voor de website: per omloop de ritten als platte array, in dezelfde vorm als De Lijn's
+// geplande-omlopen-tabel: [rit, lijn, van, naar, vertrek, aankomst, dagen(1-7), km]. Zo kan de site de
+// eigen omlopen in net dezelfde lijst tonen zonder de hele net-generatie te moeten herhalen.
+function bouwProjectie() {
+  let res; try { res = genereerNet(); } catch { return null; }
+  const omlopen = {}, routes = {};
+  for (const o of res.omlopen) {
+    const arr = omlopen[o.omloop] || (omlopen[o.omloop] = []);
+    for (const r of o.ritten) {
+      const hs = richtingHaltes(lijnen[r.lijnIdx], r.richting);
+      // Eén route per lijn+richting bewaren (haltes met reistijd + de volledige vormlijn), zodat de
+      // boordcomputer per rit de haltes, uren én de route op de kaart kan tonen zonder GTFS.
+      const rk = r.lijnIdx + ":" + r.richting;
+      if (!routes[rk]) {
+        const haltes = hs.map((h) => [h.naam, +h.lat, +h.lon, Math.max(0, Math.round(h.reistijd || 0))]);
+        const pts = [];
+        hs.forEach((h) => { pts.push([+h.lat, +h.lon]); (h.vorm || []).forEach((v) => pts.push([+v.lat, +v.lon])); });
+        routes[rk] = { haltes, pts };
+      }
+      arr.push([String(r.ritNr || ""), String(r.lijn || ""), hs[0].naam, hs[hs.length - 1].naam, minNaarUur(r.vertrek), minNaarUur(r.aankomst), o.dagen.slice(), +routeAfstandKm(hs).toFixed(3), rk]);
+    }
+  }
+  return { omlopen, routes };
+}
+function huidigNet() {
+  leesNetForm(); leesLijnForm();
+  return { id: huidigId || undefined, naam: netNaam, publiekHaltebord: !!publiekHaltebord, stelplaatsen: stelplaatsen.map((s) => ({ nr: s.nr, naam: s.naam, afk: s.afk || "", lat: s.lat, lon: s.lon })), omloopStart, ritStart, ritModus, ritNrs: ritNrs || {}, omloopToewijzing: omloopToewijzing || {}, aanmeld, afmeld, projectie: bouwProjectie(), lijnen: lijnen.map((l) => ({
+    lijn: l.lijn, heen: l.heen, terug: l.terug,
+    venster: l.venster, vensterT: l.vensterT || l.venster, terugAuto: !!l.terugAuto, frequentie: l.frequentie, keertijd: l.keertijd, richtingen: l.richtingen, dagen: l.dagen,
+  })) };
+}
+async function bewaar() {
+  $("fout").textContent = ""; $("status").textContent = "";
+  if (!toonDienstblad()) return;
+  try { const d = await net({ actie: "bewaar", net: huidigNet() }); huidigId = d.net.id; $("status").textContent = "Bewaard ✓"; laadLijst(); }
+  catch (e) { $("fout").textContent = e.message; }
+}
+function vulForm(n, behoudZicht) {
+  huidigId = n.id || "";
+  netNaam = n.naam || "";
+  publiekHaltebord = !!n.publiekHaltebord;
+  stelplaatsen = Array.isArray(n.stelplaatsen) ? n.stelplaatsen.map((s) => ({ nr: String(s.nr || ""), naam: String(s.naam || ""), afk: String(s.afk || ""), lat: +s.lat, lon: +s.lon })).filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)) : [];
+  omloopStart = n.omloopStart == null ? 1 : n.omloopStart;
+  ritStart = n.ritStart == null ? 1 : n.ritStart; ritModus = n.ritModus === "omloop" ? "omloop" : "doorlopend";
+  ritNrs = (n.ritNrs && typeof n.ritNrs === "object") ? { ...n.ritNrs } : {};
+  omloopToewijzing = (n.omloopToewijzing && typeof n.omloopToewijzing === "object") ? { ...n.omloopToewijzing } : {};
+  aanmeld = n.aanmeld == null ? 5 : n.aanmeld; afmeld = n.afmeld == null ? 10 : n.afmeld;
+  lijnen = (n.lijnen && n.lijnen.length ? n.lijnen : [legeLijn()]).map((l) => ({
+    lijn: l.lijn || "",
+    heen: (l.heen || []).map((h) => ({ ...h, vorm: (h.vorm || []).map((v) => ({ lat: v.lat, lon: v.lon })) })), terug: (l.terug || []).map((h) => ({ ...h, vorm: (h.vorm || []).map((v) => ({ lat: v.lat, lon: v.lon })) })),
+    venster: { van: (l.venster && l.venster.van) || "06:00", tot: (l.venster && l.venster.tot) || "22:00" },
+    vensterT: { van: (l.vensterT && l.vensterT.van) || (l.venster && l.venster.van) || "06:00", tot: (l.vensterT && l.vensterT.tot) || (l.venster && l.venster.tot) || "22:00" },
+    terugAuto: !!l.terugAuto,
+    frequentie: l.frequentie || 20, keertijd: l.keertijd == null ? 5 : l.keertijd, richtingen: l.richtingen === "heen" ? "heen" : "beide",
+    dagen: l.dagen || [1, 2, 3, 4, 5],
+  }));
+  actief = 0; route = "heen";
+  toonNetForm();
+  zetRouteKnoppen(); tekenLijntabs(); toonLijnForm(); tekenKaart(); tekenHalteTabel(); tekenStelplaatsLijst();
+  if (!behoudZicht) {   // bij "ongedaan maken" het huidige zoomniveau/zicht behouden
+    const alle = lijnen.flatMap((l) => l.heen.concat(l.terug)).map((h) => [h.lat, h.lon]).concat(stelplaatsen.map((s) => [s.lat, s.lon]));
+    if (alle.length) kaart.fitBounds(alle, { padding: [30, 30] });
+  }
+  toonDienstblad();
+}
+async function laadLijst() {
+  try {
+    const d = await net({ actie: "lijst" });
+    // nieuwste bovenaan (server sorteert al op gewijzigd); het net waar je nu aan werkt staat helemaal bovenaan
+    const nets = (d.nets || []).slice().sort((a, z) => (a.id === huidigId ? -1 : z.id === huidigId ? 1 : (z.gewijzigd || 0) - (a.gewijzigd || 0)));
+    $("netlijst").innerHTML = nets.length ? nets.map((n) =>
+      `<div style="margin:4px 0${n.id === huidigId ? ";font-weight:700" : ""}">${n.id === huidigId ? "▸ " : ""}<button data-laad="${esc(n.id)}">${esc(n.naam)}</button> <span class="muted" style="font-weight:400">${n.stelplaatsen ? n.stelplaatsen + " stelplaats(en) · " : ""}${n.lijnen} lijn(en)${(n.lijnnrs || []).length ? " (" + n.lijnnrs.map(esc).join(", ") + ")" : ""}${n.id === huidigId ? " · huidig" : ""}</span> <button class="no" data-weg="${esc(n.id)}">verwijderen</button></div>`
+    ).join("") : `<span class="muted">Nog geen netten opgeslagen.</span>`;
+    $("netlijst").querySelectorAll("button[data-laad]").forEach((b) => b.onclick = async () => { const d2 = await net({ actie: "laad", id: b.dataset.laad }); vulForm(d2.net); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    $("netlijst").querySelectorAll("button[data-weg]").forEach((b) => b.onclick = async () => { if (confirm("Dit net verwijderen?")) { await net({ actie: "verwijder", id: b.dataset.weg }); if (huidigId === b.dataset.weg) nieuwNet(); laadLijst(); } });
+  } catch (e) { $("netlijst").textContent = e.message; }
+}
+function nieuwNet() { vulForm({ naam: "", stelplaatsen: [], lijnen: [legeLijn()] }); huidigId = ""; $("dienstblad").innerHTML = ""; $("status").textContent = ""; }
+
+// --- Opstart -----------------------------------------------------------------
+$("dagen").innerHTML = [1, 2, 3, 4, 5, 6, 7].map((d) => `<label><input type="checkbox" value="${d}"${d <= 5 ? " checked" : ""}>${DAGNAMEN[d]}</label>`).join("");
+let gestart = false;
+function opstartPaneel() {
+  if (gestart) return; gestart = true;
+  $("aanmeld").hidden = true; $("paneel").hidden = false;
+  initKaart(); setTimeout(() => kaart.invalidateSize(), 50);
+  nieuwNet(); laadLijst(); wireAutosave();
+  // niet-bewaard concept uit een vorige sessie herstellen
+  try { const c = localStorage.getItem(LS); if (c) { const n = JSON.parse(c); if (n && n.lijnen && n.lijnen.some((l) => (l.heen || []).length >= 2)) { vulForm(n); $("status").textContent = "Vorige (automatisch bewaarde) versie hersteld."; } } } catch {}
+  historie = [];
+}
+$("open").onclick = async () => { pw = $("pw").value; $("aanmeldfout").textContent = ""; try { await net({ actie: "lijst" }); } catch (e) { $("aanmeldfout").textContent = e.message; return; } opstartPaneel(); };
+$("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("open").click(); });
+$("rtHeen").onclick = () => { route = "heen"; zetRouteKnoppen(); tekenKaart(); tekenHalteTabel(); };
+$("rtTerug").onclick = () => { route = "terug"; zetRouteKnoppen(); tekenKaart(); tekenHalteTabel(); };
+$("toggleAnder").onclick = () => { toonAndere = !toonAndere; $("toggleAnder").textContent = toonAndere ? "Andere route verbergen" : "Andere route tonen"; $("toggleAnder").classList.toggle("aan", !toonAndere); tekenKaart(); };
+$("opdeweg").onchange = () => { opDeWeg = $("opdeweg").checked; };
+$("modHalte").onclick = () => { modus = "halte"; zetModusKnoppen(); tekenKaart(); };
+$("modVorm").onclick = () => { modus = "vorm"; zetModusKnoppen(); tekenKaart(); };
+$("modStel").onclick = () => { modus = "stelplaats"; zetModusKnoppen(); tekenKaart(); };
+$("modSleep").onclick = () => { modus = "sleep"; zetModusKnoppen(); $("fout").textContent = "Sleep op de kaart om de hele route te verplaatsen."; setTimeout(() => { if ($("fout").textContent.startsWith("Sleep op de kaart")) $("fout").textContent = ""; }, 3500); };
+$("spiegel").onclick = () => { const l = L0(); if (l.heen.length < 2) { alert("Teken eerst de heenroute."); return; } snap(); l.terug = l.heen.slice().reverse().map((h) => ({ ...h, vorm: (h.vorm || []).map((v) => ({ lat: v.lat, lon: v.lon })) })); herberekenHaltes(l.terug); route = "terug"; zetRouteKnoppen(); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+$("gpx").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  $("fout").textContent = "";
+  const naam = (f.name || "").toLowerCase();
+  try {
+    if (naam.endsWith(".kmz")) {
+      const kml = await kmzNaarKml(await f.arrayBuffer());
+      importKML(kml);
+    } else {
+      const tekst = await f.text();
+      // KML of GPX herkennen (ook als de extensie .xml is): op de inhoud sniffen.
+      if (naam.endsWith(".kml") || /<kml[\s>]/i.test(tekst) || (/<Placemark[\s>]/i.test(tekst) && !/<gpx[\s>]/i.test(tekst))) importKML(tekst);
+      else importGPX(tekst);
+    }
+  } catch (err) { $("fout").textContent = err.message || "Kon het bestand niet importeren."; }
+  $("gpx").value = "";
+};
+$("herbereken").onclick = () => { snap(); herberekenHaltes(actieveHaltes()); tekenHalteTabel(); };
+$("volgweg").onclick = () => volgDeWeg();
+$("rechte").onclick = () => { snap(); const hs = actieveHaltes(); hs.forEach((h) => { h.vorm = []; h.vast = false; }); herberekenHaltes(hs); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+$("omkeer").onclick = () => { const hs = actieveHaltes(); if (hs.length < 2) { alert("Teken eerst een route van minstens twee haltes."); return; } snap(); L0()[route] = keerRouteOm(hs); herberekenHaltes(L0()[route]); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+$("benoem").onclick = benoemHaltesViaAdres;
+$("simPlay").onclick = () => { if (simSpelen) stopSim(); else startSim(); };
+$("simTijd").addEventListener("input", () => { simT = +$("simTijd").value; if (simSpelen) stopSim(); tekenSim(); });
+$("simSnel").addEventListener("change", () => { simSnelheid = +$("simSnel").value; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && kaart) { const el = $("kaart"); if (el && el.classList.contains("vol")) { el.classList.remove("vol"); setTimeout(() => kaart.invalidateSize(), 60); } } });
+$("wisroute").onclick = () => { if (confirm("Deze route wissen?")) { snap(); L0()[route] = []; tekenKaart(); tekenHalteTabel(); planBewaar(); } };
+$("lijnweg").onclick = () => { if (lijnen.length <= 1) { alert("Een net heeft minstens één lijn."); return; } if (confirm("Deze lijn verwijderen?")) { snap(); lijnen.splice(actief, 1); actief = 0; route = "heen"; zetRouteKnoppen(); tekenLijntabs(); toonLijnForm(); tekenKaart(); tekenHalteTabel(); planBewaar(); } };
+$("ongedaan").onclick = () => ongedaan();
+$("genereer").onclick = toonDienstblad;
+$("herverdeel").onclick = () => { snap(); omloopToewijzing = {}; toonDienstblad(); };
+$("afdruk").onclick = () => { if (toonDienstblad()) window.print(); };
+$("zoekknop").onclick = zoekNu;
+$("mijnloc").onclick = mijnLocatie;
+$("fitkaart").onclick = fitRoute;
+$("zoek").addEventListener("input", planZoek);
+$("zoek").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); zoekNu(); }
+  else if (e.key === "ArrowDown" && zoekTreffers.length) { e.preventDefault(); zoekSel = Math.min(zoekSel + 1, zoekTreffers.length - 1); toonZoekSuggesties(); }
+  else if (e.key === "ArrowUp" && zoekTreffers.length) { e.preventDefault(); zoekSel = Math.max(zoekSel - 1, 0); toonZoekSuggesties(); }
+  else if (e.key === "Escape") { $("zoeksug").hidden = true; }
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".zoekwrap")) $("zoeksug").hidden = true; });
+$("csvdag").onclick = exportDagplanningCSV;
+$("csvoml").onclick = exportOmlopenCSV;
+$("bewaar").onclick = bewaar;
+if ($("halteborden")) $("halteborden").onclick = () => {
+  if (!huidigId) { $("fout").textContent = "Bewaar het net eerst, dan kan je de halteborden openen."; return; }
+  window.open("/haltebord.html?net=" + encodeURIComponent(huidigId), "_blank", "noopener");
+};
+$("nieuw").onclick = () => { if (confirm("Een nieuw, leeg net beginnen? Niet-bewaarde wijzigingen gaan verloren.")) nieuwNet(); };
+document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; e.preventDefault(); ongedaan(); } });
+function wireAutosave() {
+  ["naam", "publiekHaltebord", "ritStart", "ritModus", "mAanmeld", "mAfmeld", "lijn", "van", "tot", "vanT", "totT", "terugAuto", "freq", "keer", "richting", "snelheid"].forEach((id) => {
+    const el = $(id); if (!el) return;
+    el.addEventListener("focus", () => snap(), { passive: true });
+    el.addEventListener("change", () => { leesNetForm(); leesLijnForm(); if (id === "richting" || id === "terugAuto") zetTerugVelden(); planBewaar(); });
+  });
+  document.querySelectorAll("#dagen input").forEach((i) => i.addEventListener("change", () => { snap(); planBewaar(); }));
+}
+// --- Read-only weergave voor de website ("?bekijk=<net-id>") ------------------
+// Toont enkel het dienstblad van één bewaard net, zonder editor of kaart. De toegang wordt op de
+// server afgeschermd via het beheerder-toegekende 'eigennet'-recht (actie "publiek-laad").
+async function startBekijk(id) {
+  document.body.setAttribute("data-bekijk", "1");
+  // Niets inlezen uit het (verborgen) editorformulier, en geen kaart/simulatie/opslag aanraken.
+  leesNetForm = function () {}; leesLijnForm = function () {};
+  tekenKaart = function () {}; tekenStelplaatsen = function () {}; tekenStelplaatsLijst = function () {};
+  tekenHalteTabel = function () {}; tekenLijntabs = function () {}; toonLijnForm = function () {};
+  toonNetForm = function () {}; zetRouteKnoppen = function () {};
+  toonDagplanning = function () {}; bouwSimulatie = function () { return {}; }; simZetBereik = function () {}; tekenSim = function () {}; planBewaar = function () {};
+  $("aanmeld").hidden = true; $("paneel").hidden = false;
+  document.querySelectorAll("#paneel > .panel").forEach((p) => { if (p.id !== "dienstblad-paneel") p.hidden = true; });
+  const dbp = $("dienstblad-paneel");
+  dbp.querySelectorAll("button, .rij, h2, p.muted").forEach((e) => { e.style.display = "none"; });
+  let net0;
+  try { const d = await net({ actie: "publiek-laad", id }); net0 = d.net; }
+  catch (e) { $("dienstblad").innerHTML = `<p class="fout">${esc(e.message)}</p>`; return; }
+  const kop = document.createElement("div");
+  kop.innerHTML = `<h2 style="margin:0 0 6px">${esc(net0.naam || "Eigen net")} — geplande omlopen</h2>` +
+    `<div class="rij" style="margin:0 0 10px"><div><label for="loopzoek">Zoek loopnummer</label><input id="loopzoek" placeholder="bv. 3" style="width:150px"></div></div>`;
+  dbp.insertBefore(kop, $("netstat"));
+  vulForm(net0, true);
+  toonDienstblad();
+  $("dienstblad").querySelectorAll("input").forEach((i) => { i.readOnly = true; i.tabIndex = -1; });
+  $("loopzoek").oninput = () => {
+    const q = ($("loopzoek").value || "").trim().toLowerCase();
+    $("dienstblad").querySelectorAll(".db-vel").forEach((v) => {
+      const el = v.querySelector(".db-loop-nr"); const nr = (el ? el.textContent : "").toLowerCase();
+      v.style.display = (!q || nr.includes(q)) ? "" : "none";
+    });
+  };
+}
+(async () => {
+  const bekijkId = new URLSearchParams(location.search).get("bekijk");
+  if (bekijkId) { await startBekijk(bekijkId); return; }
+  try { await net({ actie: "lijst" }); opstartPaneel(); } catch { /* wachtwoord nodig */ }
+})();
+</script>
+</body>
+</html>

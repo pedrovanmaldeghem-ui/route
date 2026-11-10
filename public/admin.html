@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beheer · Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --badge:#1f5f8b; --good:#2d7d46; --bad:#c0392b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; } }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px }
+.kaartje { max-width:760px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px }
+h1 { font-size:20px; margin:0 0 12px } h2 { font-size:16px; margin:0 0 6px }
+input { padding:9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; max-width:100% }
+.tw { overflow-x:auto }
+table { border-collapse:collapse; width:100%; font-size:14px; margin-top:12px } th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line) }
+th { font-size:12px; text-transform:uppercase; color:var(--muted) }
+button { font:600 13px system-ui; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; margin:2px 4px 2px 0 }
+button.go { background:var(--good); color:#fff; border-color:var(--good) } button.no { background:var(--bad); color:#fff; border-color:var(--bad) }
+.status-pending { color:var(--bad); font-weight:600 } .status-approved { color:var(--good) } .muted { color:var(--muted) }
+.blok { margin-top:20px; border-top:1px solid var(--line); padding-top:14px }
+a { color:var(--badge) }
+</style>
+</head>
+<body>
+<div class="kaartje">
+<h1>Beheer · Eigennet</h1>
+<div id="aanmeld"><p class="muted">Geef het beheerderswachtwoord.</p>
+<input id="pw" type="password" placeholder="Beheerderswachtwoord" autocomplete="current-password">
+<button class="go" id="open">Openen</button><div id="fout" class="status-pending"></div></div>
+<div id="paneel" hidden>
+  <h2>Accounts</h2>
+  <p class="muted"><b>Kijken</b> = netten, omlopen en boordcomputer gebruiken. <b>Bouwer</b> = netten maken en bewerken in de net-bouwer.</p>
+  <div id="info" class="muted"></div><div class="tw"><table id="tabel"></table></div>
+  <div class="blok">
+    <h2>Net-bouwer</h2>
+    <a href="/eigennet"><button class="go">Open de net-bouwer →</button></a> <a href="/">Naar de omlopen</a>
+  </div>
+  <div class="blok">
+    <h2>Netten overnemen uit Lijnkijker (eenmalig)</h2>
+    <p class="muted">Haalt alle netten op van de oude site en bewaart ze hier ongewijzigd. Netten die hier al bestaan worden overgeslagen, tenzij je "overschrijven" aanvinkt.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="bron" placeholder="https://lijnkijker.….workers.dev" style="flex:1;min-width:240px">
+      <input id="tk" placeholder="Testsleutel (optioneel)" style="width:200px">
+    </div>
+    <label class="muted" style="display:block;margin-top:6px"><input type="checkbox" id="overschrijf" style="width:auto"> Bestaande netten overschrijven</label>
+    <button class="go" id="importeer" style="margin-top:8px">Netten overnemen</button>
+    <div id="impinfo" class="muted"></div>
+  </div>
+</div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let pw = "";
+async function api(body) {
+  const r = await fetch("/api/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ beheer: pw, ...body }) });
+  let d = {}; try { d = await r.json(); } catch {}
+  if (!r.ok) throw new Error(d.fout || ("fout " + r.status));
+  return d;
+}
+async function laad() {
+  const { users } = await api({ actie: "lijst" });
+  $("info").textContent = `${users.length} account(s), ${users.filter((u) => u.status === "pending").length} wachten op goedkeuring.`;
+  const cb = (u, k, t) => `<label style="white-space:nowrap;margin-right:8px"><input type="checkbox" data-recht="${k}" data-email="${esc(u.email)}"${u.rechten && u.rechten[k] ? " checked" : ""}> ${t}</label>`;
+  $("tabel").innerHTML = `<tr><th>Naam</th><th>E-mail</th><th>Status</th><th>Rechten</th><th></th></tr>` + users.map((u) =>
+    `<tr><td>${esc(u.voornaam)} ${esc(u.naam)}</td><td>${esc(u.email)}</td><td class="status-${esc(u.status)}">${esc(u.status)}</td>` +
+    `<td>${cb(u, "kijken", "Kijken")}${cb(u, "bouwer", "Bouwer")}</td><td>` +
+    (u.status !== "approved" ? `<button class="go" data-a="approve" data-email="${esc(u.email)}">Goedkeuren</button>` : "") +
+    (u.status !== "rejected" ? `<button data-a="reject" data-email="${esc(u.email)}">Weigeren</button>` : "") +
+    `<button class="no" data-a="delete" data-email="${esc(u.email)}">Verwijderen</button></td></tr>`).join("");
+}
+$("tabel").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-a]"); if (!b) return;
+  if (b.dataset.a === "delete" && !confirm(`Account ${b.dataset.email} verwijderen?`)) return;
+  try { await api({ actie: b.dataset.a, email: b.dataset.email }); await laad(); } catch (er) { alert(er.message); }
+});
+$("tabel").addEventListener("change", async (e) => {
+  const c = e.target.closest("input[data-recht]"); if (!c) return;
+  try { await api({ actie: "recht", email: c.dataset.email, sleutel: c.dataset.recht, waarde: c.checked }); } catch (er) { alert(er.message); c.checked = !c.checked; }
+});
+$("open").onclick = async () => {
+  pw = $("pw").value; $("fout").textContent = "";
+  try { await laad(); $("aanmeld").hidden = true; $("paneel").hidden = false; } catch (e) { $("fout").textContent = e.message; }
+};
+$("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("open").click(); });
+$("importeer").onclick = async () => {
+  $("impinfo").textContent = "Bezig…";
+  try {
+    const r = await api({ actie: "importeer", bron: $("bron").value.trim(), tk: $("tk").value.trim(), overschrijf: $("overschrijf").checked });
+    const n = r.nets || [];
+    $("impinfo").innerHTML = n.length ? n.map((x) => `${esc(x.naam || x.id)}: ${esc(x.status)}`).join("<br>") : "Geen netten gevonden op de oude site.";
+  } catch (e) { $("impinfo").textContent = e.message; }
+};
+</script>
+</body>
+</html>

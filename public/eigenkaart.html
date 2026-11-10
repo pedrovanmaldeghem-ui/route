@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live kaart · Eigennet</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --badge:#1f5f8b; --geel:#ffd200; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; } }
+* { box-sizing:border-box } html,body { margin:0; height:100% } body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; flex-direction:column }
+.kop { padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:baseline; flex-wrap:wrap }
+.kop h1 { font-size:18px; margin:0 } .muted { color:var(--muted); font-size:13px } a { color:var(--badge) }
+#kaart { flex:1; min-height:300px; background:#9cc }
+.busicon { background:var(--geel); color:#111; border:2px solid #1d2326; border-radius:999px; font-weight:800; font-size:12px; text-align:center; padding:2px 6px; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,.3) }
+.leeg { padding:14px; color:var(--muted) }
+</style>
+</head>
+<body>
+<div class="kop">
+  <h1 id="titel">Live kaart</h1>
+  <span class="muted" id="meta">Laden…</span>
+  <span class="muted" style="margin-left:auto"><a id="terug" href="#">← haltebord</a></span>
+</div>
+<div id="kaart"></div>
+<div class="leeg" id="leeg" hidden></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const P = new URLSearchParams(location.search);
+const NETID = (P.get("net") || "").trim();
+$("terug").href = "/haltebord.html?net=" + encodeURIComponent(NETID);
+let kaart = null, markers = {}, eersteFit = true;
+function initKaart() {
+  kaart = L.map("kaart", { scrollWheelZoom: true }).setView([51, 4.3], 9);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap-bijdragers" }).addTo(kaart);
+}
+function busIcon(b) {
+  return L.divIcon({ className: "", html: `<div class="busicon">${esc(b.busnr)}</div>`, iconSize: null });
+}
+async function ververs() {
+  if (!NETID) { $("meta").textContent = "Geen net opgegeven."; return; }
+  let r;
+  try { r = await (await fetch("/api/eigenpos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "lees", net: NETID }) })).json(); }
+  catch { $("meta").textContent = "Kon de live posities niet laden."; return; }
+  if (r.fout) { $("meta").textContent = r.fout; return; }
+  document.title = `Live · ${r.naam || ""}`.trim();
+  $("titel").textContent = `Live bussen — ${r.naam || ""}`;
+  const buses = r.buses || [];
+  const zien = new Set();
+  const coords = [];
+  for (const b of buses) {
+    if (b.lat == null || b.lon == null) continue;
+    zien.add(b.busnr);
+    coords.push([b.lat, b.lon]);
+    const pop = `<b>Bus ${esc(b.busnr)}</b>${b.type ? "<br>" + esc(b.type) : ""}${b.lijn ? `<br>lijn ${esc(b.lijn)}` : ""}${b.bestemming ? ` → ${esc(b.bestemming)}` : ""}<br><span style="color:#888">bijgewerkt ${new Date(b.tijd).toLocaleTimeString("nl-BE")}</span>`;
+    if (markers[b.busnr]) { markers[b.busnr].setLatLng([b.lat, b.lon]).setPopupContent(pop); }
+    else { markers[b.busnr] = L.marker([b.lat, b.lon], { icon: busIcon(b) }).bindPopup(pop).addTo(kaart); }
+  }
+  // verdwenen bussen verwijderen
+  for (const nr of Object.keys(markers)) if (!zien.has(nr)) { try { kaart.removeLayer(markers[nr]); } catch {} delete markers[nr]; }
+  $("meta").textContent = buses.length ? `${buses.length} bus(sen) live · bijgewerkt ${new Date().toLocaleTimeString("nl-BE")}` : "Geen bussen live op dit moment.";
+  $("leeg").hidden = buses.length > 0;
+  $("leeg").textContent = buses.length ? "" : "Geen bus is momenteel live. Zodra een chauffeur een omloop rijdt in de boordcomputer (met busnummer), verschijnt die hier.";
+  if (eersteFit && coords.length) { try { kaart.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 15 }); } catch {} eersteFit = false; }
+}
+// De routelijnen van het net eenmalig tekenen (uit de projectie), met een stip per halte.
+async function laadRoutes() {
+  if (!NETID) return;
+  let r;
+  try { r = await (await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "publiek-halte", net: NETID }) })).json(); }
+  catch { return; }
+  if (!r || r.fout || !r.net || !r.net.projectie || !r.net.projectie.routes) return;
+  const routes = r.net.projectie.routes;
+  const alle = [];
+  const halteGezien = new Set();
+  for (const rt of Object.values(routes)) {
+    const pts = (rt.pts || []).filter(p => Array.isArray(p) && p[0] != null).map(p => [p[0], p[1]]);
+    if (pts.length >= 2) { L.polyline(pts, { color: "#1f5f8b", weight: 4, opacity: .65 }).addTo(kaart); alle.push(...pts); }
+    for (const h of (rt.haltes || [])) {
+      if (h[1] == null || h[2] == null) continue;
+      const k = h[1].toFixed(5) + "," + h[2].toFixed(5); if (halteGezien.has(k)) continue; halteGezien.add(k);
+      L.circleMarker([h[1], h[2]], { radius: 4, color: "#1d2326", weight: 1.5, fillColor: "#fff", fillOpacity: 1 }).bindPopup(`<b>${esc(h[0])}</b>`).addTo(kaart);
+      alle.push([h[1], h[2]]);
+    }
+  }
+  if (eersteFit && alle.length) { try { kaart.fitBounds(L.latLngBounds(alle), { padding: [40, 40] }); } catch {} eersteFit = false; }
+}
+initKaart();
+(async () => { await laadRoutes(); ververs(); })();
+setInterval(() => { if (!document.hidden) ververs(); }, 15000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) ververs(); });
+</script>
+</body>
+</html>

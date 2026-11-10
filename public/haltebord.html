@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haltebord · Eigennet</title>
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --badge:#1f5f8b; --geel:#ffd200; --accent:#2d7d46; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; } }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px }
+.kaartje { max-width:820px; margin:0 auto 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px }
+h1 { font-size:24px; margin:0 0 2px } h2 { font-size:18px; margin:18px 0 8px }
+.muted { color:var(--muted); font-size:14px } a { color:var(--badge) }
+.badge { display:inline-block; min-width:30px; text-align:center; font-weight:800; padding:1px 7px; border-radius:5px; background:var(--geel); color:#1a1d21; border:1px solid rgba(0,0,0,.15) }
+button, .knop { font:inherit; padding:7px 12px; border:1px solid var(--line); background:var(--panel); color:var(--fg); border-radius:7px; cursor:pointer }
+button.accent { background:var(--accent); color:#fff; border-color:transparent }
+.haltelijst { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+.haltelijst a { display:inline-block; padding:7px 11px; border:1px solid var(--line); border-radius:999px; text-decoration:none; background:var(--panel) }
+.richtingblok { border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px }
+.richtingkop { font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.dagrij { display:flex; gap:8px; align-items:baseline; margin:3px 0; flex-wrap:wrap }
+.daglabel { font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); min-width:92px }
+.tijden { font-variant-numeric:tabular-nums; font-family:ui-monospace,Menlo,monospace; display:flex; flex-wrap:wrap; gap:6px }
+.tijden span { padding:1px 4px; border-radius:4px; background:rgba(127,127,127,.1) }
+.qrdoos { display:flex; gap:16px; align-items:center; flex-wrap:wrap; border:1px dashed var(--line); border-radius:8px; padding:14px; margin-top:8px }
+.qrdoos svg { width:150px; height:150px; background:#fff; padding:6px; border-radius:6px }
+.live table { border-collapse:collapse; width:100%; margin-top:8px } .live th,.live td { text-align:left; padding:8px 8px; border-bottom:1px solid var(--line); white-space:nowrap }
+.live th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted) }
+.live td.n { font-variant-numeric:tabular-nums; font-family:ui-monospace,Menlo,monospace }
+.straks { color:var(--accent); font-weight:700 }
+.livemerk { color:#2d7d46; font-weight:700; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
+.balk { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px }
+@media print {
+  body { background:#fff; color:#000; padding:0 }
+  .noprint { display:none !important }
+  .kaartje { border:none; box-shadow:none; max-width:none; padding:0 }
+  .badge { background:#ffd200 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+}
+</style>
+</head>
+<body>
+<div class="kaartje" id="root">
+<div class="muted">Laden…</div>
+</div>
+<script src="/vendor/qrcode.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const P = new URLSearchParams(location.search);
+const NETID = (P.get("net") || "").trim();
+const HALTE = P.get("h") || "";
+const LIVE = P.get("live") === "1";
+const _toMin = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const _fmtMin = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const _norm = s => String(s || "").replace(/\s*perron.*$/i, "").trim().toLowerCase();
+const DAGNAAM = ["", "ma", "di", "wo", "do", "vr", "za", "zo"];
+function dagenLabel(ds) {
+  const a = [...new Set((ds || []).map(Number).filter(d => d >= 1 && d <= 7))].sort((x, y) => x - y);
+  if (!a.length) return "";
+  // aaneensluitende reeksen samentrekken (ma-vr), anders opsommen
+  const groepen = []; let i = 0;
+  while (i < a.length) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; groepen.push(j > i ? `${DAGNAAM[a[i]]}-${DAGNAAM[a[j]]}` : DAGNAAM[a[i]]); i = j + 1; }
+  return groepen.join(", ");
+}
+let NET = null;
+
+async function laadNet() {
+  const r = await (await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "publiek-halte", id: NETID }) })).json();
+  if (r.fout) throw new Error(r.fout);
+  return r.net;
+}
+// Alle unieke haltenamen van het net (uit de routes), gesorteerd.
+function alleHaltes(proj) {
+  const set = new Map();
+  for (const rt of Object.values(proj.routes || {})) for (const h of (rt.haltes || [])) if (h[0]) set.set(_norm(h[0]), h[0]);
+  return [...set.values()].sort((a, b) => a.localeCompare(b, "nl"));
+}
+// Doorkomsten aan één halte: per rit het passeeruur berekenen. Terminus (laatste halte) slaan we over:
+// een haltebord toont vertrekken, niet de eindaankomst.
+function doorkomsten(proj, halteNaam) {
+  const hn = _norm(halteNaam), out = [];
+  for (const [label, rits] of Object.entries(proj.omlopen || {})) {
+    for (const r of rits) {
+      const route = proj.routes && proj.routes[r[8] || ""]; if (!route || !route.haltes) continue;
+      const hs = route.haltes;
+      const vi = hs.findIndex(h => _norm(h[0]) === hn); if (vi < 0 || vi === hs.length - 1) continue;
+      let t = _toMin(r[4]); if (t == null) continue;
+      for (let i = 0; i < vi; i++) t += (hs[i][3] || 0);
+      out.push({ lijn: r[1] || "", bestemming: hs[hs.length - 1][0] || r[3] || "", tijdMin: t, dagen: r[6] || [], omloop: label, rit: String(r[0] || "") });
+    }
+  }
+  return out;
+}
+// Live posities van het net ophalen (voor de aangepaste aftelling aan de halte).
+async function haalLive() {
+  try {
+    const r = await (await fetch("/api/eigenpos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "lees", net: NETID }) })).json();
+    return (r && r.buses) || [];
+  } catch { return []; }
+}
+function liveUrl() {
+  // Schone absolute URL (zonder eventuele tk/overige parameters) zodat de QR enkel de live-link bevat.
+  return location.origin + location.pathname + "?net=" + encodeURIComponent(NETID) + "&h=" + encodeURIComponent(halteKanoniek()) + "&live=1";
+}
+let _halteKan = null;
+function halteKanoniek() { return _halteKan || HALTE; }
+
+function render() {
+  if (!NETID) { $("root").innerHTML = `<h1>Haltebord</h1><p class="muted">Geen net opgegeven.</p>`; return; }
+  const proj = NET.projectie || {};
+  if (!proj.omlopen || !proj.routes) { $("root").innerHTML = `<h1>${esc(NET.naam || "Haltebord")}</h1><p class="muted">Dit net heeft nog geen routes. Open het in de net-bouwer en klik Bewaren.</p>`; return; }
+  if (!HALTE) return renderIndex(proj);
+  // kanonieke naam bepalen (zoals in de data)
+  const hs = alleHaltes(proj); _halteKan = hs.find(n => _norm(n) === _norm(HALTE)) || HALTE;
+  return LIVE ? renderLive(proj) : renderBord(proj);
+}
+
+function renderIndex(proj) {
+  const hs = alleHaltes(proj);
+  document.title = `Halteborden · ${NET.naam || ""}`.trim();
+  $("root").innerHTML = `<h1>Halteborden — ${esc(NET.naam || "")}</h1>` +
+    `<p class="muted">Kies een halte. Je krijgt een printbaar bord met de uren en een QR-code naar de live doorkomsten.</p>` +
+    (NET.publiek === false ? `<p class="muted">⚠ "Publiek haltebord" staat nog uit voor dit net — de QR werkt dan enkel voor ingelogde gebruikers. Zet het aan in de net-bouwer.</p>` : "") +
+    `<div class="haltelijst">${hs.map(n => `<a href="?net=${encodeURIComponent(NETID)}&h=${encodeURIComponent(n)}">${esc(n)}</a>`).join("")}</div>`;
+}
+
+function groepeer(dk) {
+  // per (lijn → bestemming) en daarbinnen per dagengroep de gesorteerde uren
+  const map = new Map();
+  for (const d of dk) {
+    const k = d.lijn + "||" + d.bestemming;
+    const g = map.get(k) || (map.set(k, { lijn: d.lijn, bestemming: d.bestemming, perDag: new Map() }), map.get(k));
+    const dk2 = (d.dagen || []).slice().sort((a, b) => a - b).join(",");
+    const lijst = g.perDag.get(dk2) || (g.perDag.set(dk2, []), g.perDag.get(dk2));
+    lijst.push(d.tijdMin);
+  }
+  return [...map.values()].sort((a, b) => String(a.lijn).localeCompare(String(b.lijn)) || a.bestemming.localeCompare(b.bestemming));
+}
+
+function renderBord(proj) {
+  const dk = doorkomsten(proj, halteKanoniek());
+  document.title = `${halteKanoniek()} · ${NET.naam || ""}`.trim();
+  const groepen = groepeer(dk);
+  let blokken = groepen.map(g => {
+    const dagRijen = [...g.perDag.entries()]
+      .map(([dstr, tl]) => ({ dagen: dstr ? dstr.split(",").map(Number) : [], tl: tl.slice().sort((a, b) => a - b) }))
+      .sort((a, b) => (a.dagen[0] || 0) - (b.dagen[0] || 0));
+    const rijen = dagRijen.map(dr =>
+      `<div class="dagrij"><span class="daglabel">${esc(dagenLabel(dr.dagen) || "elke dag")}</span><span class="tijden">${dr.tl.map(m => `<span>${esc(_fmtMin(m))}</span>`).join("")}</span></div>`
+    ).join("");
+    return `<div class="richtingblok"><div class="richtingkop"><span class="badge">${esc(g.lijn || "–")}</span> richting ${esc(g.bestemming)}</div>${rijen || '<p class="muted">Geen uren.</p>'}</div>`;
+  }).join("");
+  if (!groepen.length) blokken = `<p class="muted">Geen doorkomsten aan deze halte.</p>`;
+  $("root").innerHTML =
+    `<div class="balk noprint"><a href="?net=${encodeURIComponent(NETID)}">← alle halteborden</a></div>` +
+    `<h1>${esc(halteKanoniek())}</h1><div class="muted">${esc(NET.naam || "")} · geplande doorkomsten</div>` +
+    blokken +
+    `<h2>Live doorkomsten</h2>` +
+    `<div class="qrdoos"><div id="qr"></div><div><b>Scan voor de live doorkomsten</b><div class="muted">Op je telefoon zie je de eerstvolgende bussen aan deze halte, met een aftelling, en de live kaart.</div><div class="balk noprint"><a class="knop" id="livelink" href="${esc(liveUrl())}" target="_blank" rel="noopener">Open live pagina</a> <a class="knop" href="/eigenkaart.html?net=${encodeURIComponent(NETID)}" target="_blank" rel="noopener">🗺️ Live kaart</a></div></div></div>` +
+    `<div class="balk noprint"><button class="accent" onclick="window.print()">Haltebord afdrukken</button></div>`;
+  tekenQR("qr", liveUrl());
+}
+
+function tekenQR(elId, url) {
+  const el = $(elId); if (!el) return;
+  try {
+    const qr = qrcode(0, "M"); qr.addData(url); qr.make();
+    el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  } catch (e) { el.innerHTML = `<span class="muted">QR kon niet gemaakt worden.</span>`; }
+}
+
+let _liveTimer = null;
+function renderLive(proj) {
+  document.title = `Live · ${halteKanoniek()}`;
+  const teken = async () => {
+    // Live bussen: koppel een rijdende bus (zelfde omloop + rit) aan de geplande doorkomst, en pas
+    // de verwachte tijd aan met de gemelde vertraging.
+    const buses = await haalLive();
+    const liveMap = new Map();
+    for (const b of buses) {
+      if (b.vertraging == null) continue;
+      liveMap.set((b.omloop || "") + "|" + (b.rit || ""), { vertraging: b.vertraging, busnr: b.busnr });
+    }
+    const now = new Date();
+    const wd = now.getDay() || 7, nowMin = now.getHours() * 60 + now.getMinutes();
+    const dk = doorkomsten(proj, halteKanoniek())
+      .filter(d => (d.dagen || []).map(Number).includes(wd))
+      .map(d => {
+        const lv = liveMap.get(d.omloop + "|" + d.rit);
+        const vert = lv ? lv.vertraging : null;
+        const effMin = d.tijdMin + (vert || 0);
+        return { ...d, vert, live: !!lv, effMin, over: effMin - nowMin };
+      })
+      .filter(d => d.over >= -1)
+      .sort((a, b) => a.effMin - b.effMin)
+      .slice(0, 10);
+    const rijen = dk.length ? dk.map(d => {
+      const over = Math.round(d.over);
+      const overTxt = over <= 0 ? "nu" : over < 60 ? `over ${over} min` : _fmtMin(d.effMin);
+      const liveTxt = d.live
+        ? ` <span class="livemerk">🟢 ${d.vert > 0 ? "+" + d.vert + " min" : (d.vert < 0 ? d.vert + " min te vroeg" : "op tijd")}</span>`
+        : "";
+      return `<tr><td><span class="badge">${esc(d.lijn || "–")}</span></td><td>${esc(d.bestemming)}</td><td class="n">${esc(_fmtMin(d.tijdMin))}</td><td class="n ${over >= 0 && over < 15 ? "straks" : ""}">${esc(overTxt)}${liveTxt}</td></tr>`;
+    }).join("") : `<tr><td colspan="4" class="muted">Geen doorkomsten meer vandaag aan deze halte.</td></tr>`;
+    const nLive = dk.filter(d => d.live).length;
+    $("root").innerHTML =
+      `<div class="balk noprint"><a href="?net=${encodeURIComponent(NETID)}&h=${encodeURIComponent(halteKanoniek())}">← haltebord</a> <a class="knop" href="/eigenkaart.html?net=${encodeURIComponent(NETID)}" target="_blank" rel="noopener">🗺️ Live kaart</a></div>` +
+      `<h1>${esc(halteKanoniek())}</h1><div class="muted">${esc(NET.naam || "")} · live doorkomsten · ${now.toLocaleString("nl-BE", { weekday: "long", hour: "2-digit", minute: "2-digit" })}</div>` +
+      `<div class="live"><table><tr><th>Lijn</th><th>Richting</th><th>Uur</th><th>Binnen</th></tr>${rijen}</table></div>` +
+      `<p class="muted" style="margin-top:12px">${nLive ? "🟢 toont de echte verwachte tijd van een rijdende bus (met vertraging). " : ""}Overige uren zijn gepland volgens de dienstregeling. Ververst automatisch; de rijdende bus zie je live op de kaart.</p>`;
+  };
+  teken();
+  clearInterval(_liveTimer);
+  _liveTimer = setInterval(() => { if (!document.hidden) teken(); }, 15000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) teken(); });
+}
+
+(async () => {
+  if (!NETID) { render(); return; }
+  try { NET = await laadNet(); } catch (e) {
+    $("root").innerHTML = `<h1>Haltebord</h1><p class="muted">${esc(e.message || "Kon het net niet laden.")}</p>` +
+      `<p class="muted">Zet "Publiek haltebord" aan in de net-bouwer om de QR voor iedereen te laten werken.</p>`;
+    return;
+  }
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# De HTML nooit lang cachen, zodat updates meteen zichtbaar zijn.
+/
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache

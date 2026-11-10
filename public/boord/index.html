@@ -1,0 +1,2194 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Boordcomputer · Eigennet</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2e7d32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Buspilot">
+<link rel="apple-touch-icon" href="/img/bp-180.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+:root{
+  --oranje:#e8820c; --blauw:#1565c0; --groen:#2e7d32; --rood:#c62828;
+  --bg:#0e1116; --paneel:#161b22; --lijn:#2a2f37; --tekst:#f2f4f7; --muted:#9aa4b2;
+  --sat:env(safe-area-inset-top, 0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#fff;color:#15181d;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+body{display:flex;flex-direction:column;overflow:hidden}
+button{font-family:inherit}
+.knop{background:#f2f4f7; color:#15181d; border:1px solid #d0d5dd; border-radius:8px;
+  padding:10px 14px; font-size:15px; cursor:pointer}
+.knop:active{transform:translateY(1px)}
+.primair{background:var(--blauw); border-color:var(--blauw); color:#fff; font-weight:600}
+.scherm{flex:1; min-height:0; display:none; flex-direction:column}
+.scherm.aan{display:flex}
+
+/* ---------- Opstart ---------- */
+#setup{padding:calc(18px + var(--sat)) 18px 18px; gap:14px; overflow:auto}
+#setup h1{font-size:20px; margin:4px 0 2px}
+#setup .sub{color:#5a626e; font-size:14px; margin:0 0 6px}
+.kaartje{background:#f7f8fa; border:1px solid #e4e7ec; border-radius:12px; padding:14px; margin-bottom:12px}
+.kaartje h2{font-size:15px; margin:0 0 10px; color:#5a626e; text-transform:uppercase; letter-spacing:.04em}
+#omlnr{font-size:30px; letter-spacing:.08em; text-align:center; width:100%; padding:14px;
+  border-radius:10px; border:2px solid #d0d5dd; background:#fff; color:#15181d; font-weight:700}
+.rij{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.rij label{font-size:13px; color:var(--muted)}
+select,input[type=search]{background:#fff; color:#15181d; border:1px solid #d0d5dd;
+  border-radius:8px; padding:10px; font-size:15px}
+#omllijst{display:flex; flex-direction:column; gap:8px; max-height:46vh; overflow:auto}
+.oml-item{text-align:left; width:100%; display:flex; justify-content:space-between; gap:8px}
+.oml-item small{color:var(--muted)}
+.hint{color:#5a626e; font-size:13px}
+.fout{color:#ff8a80; font-size:14px}
+.goed{color:#1b7a34; font-size:14px; font-weight:600}
+body.donker .goed{color:#b6f0bd}
+
+/* ---------- Rijscherm ---------- */
+#rij{display:none}
+#rij.aan{display:flex}
+#kop{color:#fff; padding:calc(8px + var(--sat)) 10px 10px; transition:background .3s}
+#kop.groen{background:var(--groen)} #kop.oranje{background:var(--oranje)} #kop.blauw{background:var(--blauw)}
+/* Op tijd = wit (geen groen). Donkere tekst + aangepaste balk zodat alles leesbaar blijft. */
+#kop.wit{background:#fff; color:#111}
+#kop.wit .balk{background:rgba(0,0,0,.14)}
+#kop.wit .balk .vul{background:rgba(0,0,0,.32)}
+#kop.wit .balk .knop-pos{background:#111; box-shadow:0 1px 3px rgba(0,0,0,.3)}
+#kop.wit .balk .eind{background:rgba(0,0,0,.45)}
+#kop.wit .box{border-color:rgba(0,0,0,.55)}
+/* Kop: links de afwijking, in het MIDDEN de klok, rechts de badges. De twee zijkolommen krijgen
+   gelijke breedte (flex:1 1 0) zodat de klok exact in het midden van het scherm staat, ongeacht hoe
+   breed de afwijking of de badges zijn. */
+.kopboven{display:flex; align-items:center; gap:8px; font-weight:700}
+.afw{font-size:34px; line-height:1; min-width:84px; flex:1 1 0}
+.afw small{display:block; font-size:11px; font-weight:600; opacity:.85; letter-spacing:.03em}
+/* Enkel het uur (klok) extra groot — de rest blijft rustig zoals ervoor. */
+.klokgroot{font-size:40px; display:flex; align-items:center; justify-content:center; gap:8px; flex:0 0 auto}
+.badges{display:flex; align-items:center; gap:6px; flex:1 1 0; justify-content:flex-end}
+.lijnbadge{padding:3px 9px; border-radius:7px; font-weight:800; font-size:20px}
+.box{border:2px solid rgba(255,255,255,.85); border-radius:6px; padding:2px 7px; font-weight:700; font-size:15px}
+#brit{font-weight:800; font-size:16px}
+.rit8{width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+  border:2px solid rgba(255,255,255,.85); border-radius:7px; font-weight:800; font-size:14px;
+  clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}
+.balk{height:12px; background:rgba(255,255,255,.3); border-radius:7px; margin:10px 0 4px; position:relative}
+.balk .vul{position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.6); border-radius:7px; transition:width .4s linear}
+.balk .knop-pos{position:absolute; top:50%; width:18px; height:18px; border-radius:50%; background:#fff;
+  transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.balk .eind{position:absolute; top:50%; width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.7); transform:translate(-50%,-50%)}
+/* De huidige halte: enige weergave, bovenaan, groot (23 px) — zichtbaar bij Halten én Kaart. */
+/* De balk met de huidige halte krijgt exact dezelfde timeline-opmaak als een rij in de lijst eronder:
+   het streepje (border-left) en het bolletje (::before) vóór het uur, en een even brede uur-kolom. */
+#tp{display:flex; align-items:center; gap:12px; background:#fff; color:#111; padding:9px 14px; font-weight:700; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
+#tp::before{content:""; position:absolute; left:-9px; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #9aa4b2}
+#tp .tpt{font-size:20px; flex:none; min-width:60px; font-variant-numeric:tabular-nums} #tp .tpn{font-size:20px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#body{flex:1; min-height:0; position:relative}
+#lijstwrap{position:absolute; inset:0; overflow:auto; background:#fff; color:#15181d}
+#kaart{position:absolute; inset:0; display:none}
+/* Ruime ondermarge zodat ook de laatste halte helemaal naar boven kan scrollen (zie schuifLijst). */
+.tl{list-style:none; margin:0; padding:6px 0 60vh}
+.tl li{display:flex; align-items:center; gap:12px; padding:9px 14px; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
+.tl li::before{content:""; position:absolute; left:-9px; width:12px; height:12px; border-radius:50%;
+  background:#fff; border:2px solid #9aa4b2}
+.tl li.gehad{opacity:.5}
+.tl li.gehad .naam{text-decoration:line-through}
+.tl li.nu{border-left-color:var(--groen); background:#e3f4e6}
+.tl li.nu::before{background:var(--groen); border-color:var(--groen); box-shadow:0 0 0 4px rgba(46,125,50,.2)}
+.tl li.volgend::before{border-color:#15181d}
+.tl .t{font-variant-numeric:tabular-nums; font-weight:700; min-width:60px; font-size:20px}
+.tl .naam{font-size:20px; line-height:1.15; font-weight:500}
+.tl li{cursor:pointer} .tl li:active{background:#eceff3}
+#balkbtns{display:flex; gap:8px; padding:8px; background:#fff; border-top:1px solid #d0d5dd}
+#balkbtns .knop{flex:1; text-align:center; background:#f2f4f7; color:#15181d; border-color:#d0d5dd; font-size:23px; line-height:1; padding:11px 0}
+/* Onderaan: aankomst van deze rit + vertrek/pauze van de volgende rit. Wit, net als de haltelijst. */
+#volgstrip{background:#fff; color:#15181d; border-top:1px solid #d0d5dd; padding:7px 14px; display:flex; flex-direction:column; gap:3px}
+#volgstrip:empty{display:none}
+#volgstrip .vs-rij{display:flex; align-items:center; gap:10px; font-size:20px}
+#volgstrip .vs-t{font-variant-numeric:tabular-nums; font-weight:800; min-width:50px; font-size:20px}
+#volgstrip .vs-n{color:#5a626e; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#volgstrip .vs-volg .vs-n{color:#15181d; font-weight:600}
+#volgstrip .vs-pauze{color:#1565c0; font-weight:700; flex:none; white-space:nowrap}
+#volgstrip .vs-lijnbadge{display:inline-block; padding:0 9px; border-radius:7px; font-weight:800; line-height:1.4; vertical-align:middle}
+#volgstrip .vs-leegbadge{display:inline-block; padding:0 9px; border-radius:7px; font-weight:800; line-height:1.4; vertical-align:middle; background:#667; color:#fff}
+/* Korte melding onderaan (bv. einde rit / eindhalte niet bereikt). */
+#toast{position:fixed; left:50%; bottom:78px; transform:translateX(-50%); z-index:1100;
+  background:rgba(14,17,22,.94); color:#fff; padding:11px 18px; border-radius:12px; font-size:16px;
+  font-weight:700; box-shadow:0 2px 14px rgba(0,0,0,.5); display:none; max-width:92%; text-align:center}
+#toast.aan{display:block}
+/* Routewaarschuwing: verschijnt op elk scherm als de geladen route niet strookt met de online
+   omleidingsdata (afgeschafte halte nog bediend, of vervanghalte ontbreekt). Wegklikbaar. */
+#routewaar{position:fixed; top:0; left:0; right:0; z-index:1150; display:none;
+  background:#b42318; color:#fff; padding:11px 46px 11px 15px; font-size:14px; line-height:1.4;
+  box-shadow:0 2px 12px rgba(0,0,0,.35)}
+#routewaar.aan{display:block}
+#routewaar b{font-weight:700}
+#routewaar .rw-sluit{position:absolute; top:7px; right:9px; width:32px; height:32px; border:0;
+  background:rgba(255,255,255,.2); color:#fff; border-radius:9px; font-size:17px; line-height:1; cursor:pointer}
+body.donker #routewaar{background:#8b1d14}
+/* Permanente haltenaam-labels op de kaart (togglebaar via de 🏷️-knop). */
+.halte-label{background:rgba(255,255,255,.92); border:1px solid #cfd4dc; color:#15181d; font-weight:700;
+  font-size:15px; padding:2px 7px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,.25); white-space:nowrap}
+.halte-label::before{display:none !important}
+/* Voortgangsbalk gearceerd wanneer je van de route afwijkt (positie onzeker). */
+.balk.offroute{background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.28) 0 5px, rgba(255,255,255,.3) 5px 10px)}
+/* ---------- Donkere modus (nachtrijden) ---------- */
+/* Standaard zijn de panelen licht (goed bij daglicht); in donkere modus draaien ze terug naar donker. */
+#rij.donker #lijstwrap{background:var(--bg); color:var(--tekst)}
+#rij.donker .tl li{border-left-color:var(--lijn)}
+#rij.donker .tl li::before{background:var(--bg); border-color:var(--muted)}
+#rij.donker .tl li.nu{background:#13241a}
+#rij.donker .tl li.volgend::before{border-color:#fff}
+#rij.donker .tl li:active{background:#16202b}
+#rij.donker #tp{background:#161b22; color:#f2f4f7; border-left-color:var(--lijn)}
+#rij.donker #tp::before{background:var(--bg); border-color:var(--muted)}
+#rij.donker #volgstrip{background:var(--paneel); color:var(--tekst); border-top-color:var(--lijn)}
+#rij.donker #volgstrip .vs-n{color:var(--muted)}
+#rij.donker #volgstrip .vs-volg .vs-n{color:var(--tekst)}
+#rij.donker #volgstrip .vs-pauze{color:#4da3ff}
+/* 'Op tijd' (wit) wordt in donkere modus een donkere neutrale balk i.p.v. een felwitte flits. */
+#rij.donker #kop.wit{background:#1b2027; color:#f2f4f7}
+#rij.donker #kop.wit .balk{background:rgba(255,255,255,.3)}
+#rij.donker #kop.wit .balk .vul{background:rgba(255,255,255,.6)}
+#rij.donker #kop.wit .balk .knop-pos{background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.4)}
+#rij.donker #kop.wit .balk .eind{background:rgba(255,255,255,.7)}
+#rij.donker #kop.wit .box{border-color:rgba(255,255,255,.85)}
+#rij.donker #balkbtns{background:var(--paneel); border-top-color:var(--lijn)}
+#rij.donker #balkbtns .knop{background:#223; color:var(--tekst); border-color:var(--lijn)}
+/* Donkere kaart: we inverteren enkel de tegellaag (dezelfde gecachte tegels, dus geen extra data).
+   De route, haltebollen en live-bol zitten in aparte Leaflet-lagen en behouden hun echte kleuren. */
+#rij.donker .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.95)}
+/* De basis is overdag wit; in donkere modus (nachtrijden) gaan ook de opstart-, pauze- en
+   menuschermen terug naar donker, zodat er 's nachts niets fel wit oplicht. */
+body.donker{background:var(--bg);color:var(--tekst)}
+body.donker .kaartje{background:var(--paneel);border-color:var(--lijn)}
+body.donker #omlnr,body.donker select,body.donker input[type=search]{background:#0b0e13;color:var(--tekst);border-color:var(--lijn)}
+body.donker .knop:not(.primair){background:#223;color:var(--tekst);border-color:var(--lijn)}
+body.donker #setup .sub,body.donker .hint,body.donker .kaartje h2,body.donker #pauze .waarsch,body.donker .ritkeuze .rn,body.donker .omlkaart .per,body.donker .omlkaart .red{color:var(--muted)}
+body.donker .blad{background:var(--paneel)}
+body.donker #pauze .volgrit{background:var(--paneel);border-color:var(--lijn)}
+body.donker #gate{background:var(--bg)}
+body.donker .ritkeuze button.huidig{background:#122}
+body.donker .omlkaart{background:#0b0e13;border-color:var(--lijn)}
+body.donker .omlkaart b{color:#ffd9a8}
+body.donker .omlstatus.ok{color:#b6f0bd;background:rgba(46,125,50,.18)}
+body.donker .omlstatus.waar{color:#ffd9a8;background:rgba(232,130,12,.16)}
+
+/* ---------- Opstartscherm (logo + disclaimer/privacy) ---------- */
+#intro{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(130% 90% at 50% 28%,#151c38 0%,#0a0d16 72%);color:#eef1f8;padding:28px;text-align:center}
+#intro.aan{display:flex}
+#intro .merk{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:22px}
+#intro .merk svg{width:116px;height:116px;filter:drop-shadow(0 6px 22px rgba(126,34,206,.45))}
+#intro .naam{font-size:30px;font-weight:800;letter-spacing:.06em}
+#intro .slo{font-size:13px;color:#aab3c7;margin-top:2px;letter-spacing:.02em}
+#intro .info{max-width:450px;font-size:13.5px;line-height:1.55;color:#c3cad8}
+#intro .info b{color:#eef1f8}
+#intro .onaf{margin-top:14px;font-size:12.5px;color:#8a93a6;line-height:1.45}
+#intro .start{margin-top:26px;background:#7e22ce;color:#fff;border:none;border-radius:12px;
+  padding:14px 36px;font-size:17px;font-weight:700;cursor:pointer}
+#intro .start:active{transform:translateY(1px)}
+
+/* ---------- Pauze ---------- */
+#pauze{align-items:center; justify-content:center; text-align:center; padding:calc(24px + var(--sat)) 24px 24px; gap:18px}
+#pauze .aftel{font-size:56px; font-weight:800; color:#4da3ff; font-variant-numeric:tabular-nums}
+#pauze .waarsch{color:#5a626e; max-width:440px; line-height:1.4}
+#pauze .volgrit{background:#f7f8fa; border:1px solid #e4e7ec; border-radius:12px; padding:14px 18px; font-size:17px}
+#pauze .volgrit b{font-size:20px}
+
+/* ---------- Ritmenu overlay ---------- */
+.overlay{position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:flex-end; z-index:900}
+.overlay.aan{display:flex}
+.blad{background:#fff; width:100%; max-height:80vh; border-radius:16px 16px 0 0; padding:14px; overflow:auto}
+.blad h3{margin:2px 0 10px; font-size:16px}
+#scoreInhoud{text-align:center; padding:6px 2px 14px}
+.score-groot{display:flex; flex-direction:column; align-items:center; gap:6px; margin:6px 0 10px}
+.score-groot .sterren{font-size:40px; line-height:1; letter-spacing:4px; color:#f0a000}
+.score-groot .getal{font-size:46px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--blauw)}
+.score-groot .getal small{font-size:20px; font-weight:600; color:#5a626e}
+.score-groot.goed .getal{color:#067647}
+.score-groot.matig .getal{color:#b54708}
+.score-groot.zwak .getal{color:#b42318}
+.score-fb{font-size:17px; font-weight:600; margin:2px 10px 8px}
+.score-detail{font-size:14px; color:#5a626e; font-variant-numeric:tabular-nums}
+body.donker .score-groot .getal small, body.donker .score-detail{color:#9aa3af}
+.ritkeuze{display:flex; flex-direction:column; gap:6px}
+.ritkeuze button{display:grid; grid-template-columns:52px 60px 1fr; gap:10px; align-items:center; text-align:left}
+.ritkeuze button.huidig{border-color:var(--blauw); background:#eaf2fd}
+.ritkeuze .rn{color:#5a626e; font-variant-numeric:tabular-nums}
+.sluit{float:right}
+/* Grote, goed aantikbare knoppen in het sleutel-menu. */
+.menuknoppen{display:flex; flex-direction:column; gap:10px; margin-top:16px}
+.menuknoppen .knop{width:100%; font-size:18px; padding:17px 14px; font-weight:600}
+.meldveld{display:block; width:100%; box-sizing:border-box; margin:8px 0; padding:12px; border:1px solid var(--lijn); border-radius:8px; background:#fff; color:#111; font:inherit}
+#meldTekst{min-height:120px; resize:vertical}
+body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(--lijn)}
+
+/* ---------- Gate ---------- */
+#gate{position:fixed; inset:0; background:#fff; display:none; align-items:center; justify-content:center; z-index:1000; padding:24px; text-align:center}
+#gate.aan{display:flex}
+.leaflet-container{background:#1a1f27}
+/* Live-positiemarker: een moderne navigatiepijl in Waze-stijl — één strakke richtingspijl die je
+   rijrichting toont, met witte rand en een zachte slagschaduw zodat ze van de kaart loskomt. Geen
+   pulserende ring. Eigen kleur via --volgkleur (contrasteert met de blauwe bussen en de paarse route). */
+.boordmarker{background:none;border:none}
+.bm{position:absolute;left:0;top:0;width:60px;height:60px;--volgkleur:#ff6d00}
+/* Richtingslaag: draait met je rijrichting (var --h, gezet op .bm → erft hierheen). */
+.bm .richt{position:absolute;left:0;top:0;width:60px;height:60px;display:flex;align-items:center;justify-content:center;transform-origin:50% 50%;transform:rotate(var(--h,0deg));filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+.bm .richt svg{width:48px;height:48px;display:block}
+.bm .richt path{fill:var(--volgkleur);stroke:#fff;stroke-width:1.7;stroke-linejoin:round}
+/* Kaartknoppen (onder de zoomknoppen): volgmodus-switch en navigatie. */
+.leaflet-bar a.mapknop{font-size:18px;font-weight:700;text-align:center}
+.leaflet-bar a.mapknop.aan{background:var(--blauw);color:#fff}
+/* Navigatie-instructiebalk boven de kaart. */
+.navbaan{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:600;
+  background:rgba(14,17,22,.92);color:#fff;border:1px solid var(--lijn);border-radius:12px;
+  padding:9px 16px;font-size:18px;font-weight:700;display:none;align-items:center;gap:12px;
+  box-shadow:0 2px 12px rgba(0,0,0,.55);max-width:92%}
+.navbaan.aan{display:flex}
+.navbaan .pijl{font-size:26px;line-height:1}
+/* Snelheidsmeter links onderaan de kaart: huidige snelheid + de maximaal toegelaten snelheid. */
+#snelmeter{position:absolute;left:10px;bottom:12px;z-index:600;display:none;align-items:flex-end;gap:10px}
+#snelmeter.aan{display:flex}
+#snelmeter .nu{background:rgba(14,17,22,.92);color:#fff;border:1px solid var(--lijn);border-radius:12px;
+  padding:7px 12px;box-shadow:0 2px 12px rgba(0,0,0,.55);text-align:center;line-height:1}
+#snelmeter .nu b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;display:block}
+#snelmeter .nu small{font-size:11px;font-weight:600;color:#aeb6c2;letter-spacing:.5px}
+#snelmeter .max{width:58px;height:58px;border-radius:50%;background:#fff;border:6px solid #d42;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.45)}
+#snelmeter .max b{color:#111;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+#snelmeter .max.leeg{border-color:#888}
+#snelmeter .max.leeg b{color:#888;font-size:22px}
+/* Omleiding-overlay statusregels. */
+.omlstatus{border-radius:10px;padding:12px 14px;font-size:16px;font-weight:600;margin-bottom:12px}
+.omlstatus.ok{background:rgba(46,125,50,.12);border:1px solid var(--groen);color:#1b5e20}
+.omlstatus.waar{background:rgba(232,130,12,.12);border:1px solid var(--oranje);color:#8a4b00}
+.omllijst{display:flex;flex-direction:column;gap:10px}
+.omlkaart{background:#f7f8fa;border:1px solid #e4e7ec;border-radius:10px;padding:10px 12px}
+.omlkaart b{color:#b45309}
+.omlkaart .per{color:#5a626e;font-size:13px;margin-top:3px}
+.omlkaart .red{color:#5a626e;font-size:14px;margin-top:5px}
+.omlhaltes{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px;align-items:baseline}
+.omlhaltes .hl-lab{flex-basis:100%;font-size:13px;font-weight:700;margin-bottom:2px}
+.omlhaltes .hl-sub{font-weight:500;opacity:.8}
+.omlhaltes .hl-h{font-size:14px;padding:2px 8px;border-radius:999px;border:1px solid transparent}
+.omlhaltes.geraakt .hl-lab{color:#b42318}
+.omlhaltes.geraakt .hl-h{background:rgba(217,45,32,.09);border-color:rgba(217,45,32,.28);color:#912018}
+.omlhaltes.vervang .hl-lab{color:#1849a9}
+.omlhaltes.vervang .hl-h{background:rgba(21,94,239,.08);border-color:rgba(21,94,239,.26);color:#1849a9}
+.omlhaltes.betrokken .hl-lab{color:#8a4b00}
+.omlhaltes.betrokken .hl-h{background:rgba(232,130,12,.1);border-color:rgba(232,130,12,.28);color:#8a4b00}
+body.donker .omlhaltes.geraakt .hl-lab{color:#ffb4ab}
+body.donker .omlhaltes.geraakt .hl-h{background:rgba(217,45,32,.18);border-color:rgba(217,45,32,.4);color:#ffb4ab}
+body.donker .omlhaltes.vervang .hl-lab{color:#9fc0ff}
+body.donker .omlhaltes.vervang .hl-h{background:rgba(21,94,239,.2);border-color:rgba(21,94,239,.45);color:#9fc0ff}
+body.donker .omlhaltes.betrokken .hl-lab{color:#ffd9a8}
+body.donker .omlhaltes.betrokken .hl-h{background:rgba(232,130,12,.2);border-color:rgba(232,130,12,.42);color:#ffd9a8}
+/* ---------- Omloop-overzicht (bij start) ---------- */
+#overzicht{padding:calc(14px + var(--sat)) 14px 14px; gap:10px; overflow:hidden}
+#ovzkop{background:#eef2f7; border:1px solid #e4e7ec; border-radius:12px; padding:10px 14px}
+#ovzkop .ovz-dag{font-weight:800; font-size:18px}
+#ovzkop .ovz-sp{color:#5a626e; font-size:14px; margin-top:2px}
+#ovzlijst{flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:6px}
+.ovz-rit{display:grid; grid-template-columns:120px 62px 1fr; gap:10px; align-items:center; text-align:left; width:100%}
+.ovz-rit .rn{font-variant-numeric:tabular-nums; font-weight:700}
+.ovz-rit .rl{color:#5a626e}
+.ovz-rit.best{background:#e8ebef; border-color:#aab2bf; font-weight:600}
+.ovz-rit.leegrit{background:#fff}
+.ovz-rit.leegrit .rl{color:#8a93a0; font-style:italic; font-weight:600}
+body.donker .ovz-rit.leegrit{background:#0b0e13}
+#ovzknoppen{display:flex; gap:8px}
+body.donker #ovzkop{background:var(--paneel); border-color:var(--lijn)}
+body.donker #ovzkop .ovz-sp{color:var(--muted)}
+body.donker .ovz-rit.best{background:#1b2430; border-color:var(--lijn)}
+body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- Opstart -->
+<section id="setup" class="scherm aan">
+  <div>
+    <h1>Boordcomputer</h1>
+    <p class="sub">Een hulp-boordcomputer voor chauffeurs. Geef je omloop in, de telefoon volgt je positie en toont je dienstblad, de route en of je voor of achter op schema rijdt.</p>
+  </div>
+  <button class="knop primair" id="instalKnop" style="width:100%;display:none">📲 Zet op je startscherm</button>
+  <div class="kaartje">
+    <h2>Omloop kiezen</h2>
+    <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:8px"><label for="eignet" style="min-width:56px">Net</label><select id="eignet" style="flex:1"></select></div>
+    <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:8px"><label for="omldag" style="min-width:56px">Dag</label><select id="omldag" style="flex:1"></select></div>
+    <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:10px"><label for="eigoml" style="min-width:56px">Omloop</label><select id="eigoml" style="flex:1"></select></div>
+    <button class="knop primair" id="omlzoek" style="width:100%">Omloop openen</button>
+    <p id="zoekfout" class="fout" style="margin:8px 0 0"></p>
+  </div>
+  <span id="dataversie" hidden></span><button id="ververs" hidden></button>
+  <p class="hint" style="text-align:center;margin:2px 2px 4px;font-size:12px">
+    Eigennet · zelf geplande netten ·
+    <a href="#" id="introHer" style="color:inherit">info &amp; disclaimer</a>
+  </p>
+</section>
+
+<!-- Pauze tussen ritten -->
+<section id="pauze" class="scherm">
+  <div class="volgrit" id="pauzeVolg"></div>
+  <div class="aftel" id="pauzeKlok">–:–</div>
+  <p class="waarsch">Klik dit pauzescherm nooit weg voordat je op je vertrekpunt staat (anders lijkt je rit al gestart en ben je aan het vroegrijden).</p>
+  <button class="knop primair" id="pauzeStart">Rit manueel starten</button>
+  <button class="knop" id="pauzeMenu">Andere rit kiezen</button>
+</section>
+
+<!-- Omloop-overzicht (bij het starten van een omloop) -->
+<section id="overzicht" class="scherm">
+  <div id="ovzkop"></div>
+  <div id="ovzlijst"></div>
+  <div id="ovzknoppen">
+    <button class="knop primair" id="ovzStart" style="flex:1">Start</button>
+    <button class="knop" id="ovzTerug">Andere omloop</button>
+  </div>
+</section>
+
+<!-- Rijscherm -->
+<section id="rij" class="scherm">
+  <div id="kop" class="groen">
+    <div class="kopboven">
+      <div class="afw" id="afw"></div>
+      <div class="klokgroot" id="klok"><span id="klokhand" style="display:none">✋</span><span id="klokt">--:--</span></div>
+      <div class="badges">
+        <span class="lijnbadge" id="blijn">–</span>
+        <span class="box" id="bintern">–</span>
+        <span id="brit"></span>
+      </div>
+    </div>
+    <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
+  </div>
+  <div id="tp"><span class="tpt" id="tptijd">--:--</span><span class="tpn" id="tpnaam">–</span></div>
+  <div id="body">
+    <div id="lijstwrap"><ul class="tl" id="tl"></ul></div>
+    <div id="kaart"></div>
+    <div id="navbaan" class="navbaan"><span class="pijl" id="navpijl">↑</span><span id="navtxt">–</span></div>
+    <div id="snelmeter"><div class="nu"><b id="snelNu">–</b><small>km/u</small></div><div class="max leeg" id="snelMax" title="Maximaal toegelaten snelheid (indicatief)"><b>–</b></div></div>
+  </div>
+  <div id="volgstrip"></div>
+  <div id="balkbtns">
+    <button class="knop" id="btnLijst" aria-pressed="true" title="Halten" aria-label="Halten">📋</button>
+    <button class="knop" id="btnKaart" title="Kaart" aria-label="Kaart">🗺️</button>
+    <button class="knop" id="btnMenu" title="Rit" aria-label="Rit">🔑</button>
+    <button class="knop" id="btnOml" title="Omleiding — klopt de route voor deze rit?" aria-label="Omleiding">⚠️</button>
+  </div>
+</section>
+
+<!-- Korte melding (op body-niveau, zodat ze op elk scherm zichtbaar is) -->
+<div id="toast"></div>
+
+<!-- Routewaarschuwing (op body-niveau, zichtbaar op elk scherm; wegklikbaar) -->
+<div id="routewaar" role="alert">
+  <button class="rw-sluit" id="rwSluit" aria-label="Melding sluiten">✕</button>
+  <div id="rwTekst"></div>
+</div>
+
+<!-- Ritkeuze-overlay (via slotje) -->
+<div class="overlay" id="menu">
+  <div class="blad">
+    <button class="knop sluit" id="menuSluit">Sluiten</button>
+    <h3 id="menuTitel">Menu</h3>
+    <div class="ritkeuze" id="menuLijst"></div>
+    <div class="menuknoppen" id="menuActies">
+      <button class="knop" id="menuOverzicht">📋 Naar rittenoverzicht</button>
+      <button class="knop" id="menuThema">🌙 Donkere modus</button>
+      <button class="knop" id="menuInfo">ⓘ Info &amp; disclaimer</button>
+      <button class="knop" id="menuMelden">🛠️ Probleem of suggestie melden</button>
+      <button class="knop" id="menuTerug">⏹ Loop afsluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Probleem/suggestie melden -->
+<div class="overlay" id="meldov">
+  <div class="blad">
+    <button class="knop sluit" id="meldSluit">Sluiten</button>
+    <h3>Probleem of suggestie melden</h3>
+    <p class="hint">Vertel wat er misgaat of wat beter kan. Een schermafbeelding mag, maar hoeft niet.</p>
+    <select id="meldSoort" class="meldveld"><option value="probleem">Probleem</option><option value="suggestie">Suggestie</option></select>
+    <textarea id="meldTekst" class="meldveld" placeholder="Beschrijf het probleem of je idee…"></textarea>
+    <input type="file" id="meldShot" class="meldveld" accept="image/*">
+    <div id="meldStatus" class="hint"></div>
+    <button class="knop" id="meldVerzend" style="width:100%;font-size:18px;padding:16px;font-weight:600;margin-top:4px">Verzenden</button>
+  </div>
+</div>
+
+<!-- Omleiding-overlay -->
+<div class="overlay" id="omlov">
+  <div class="blad">
+    <button class="knop sluit" id="omlSluit">Sluiten</button>
+    <h3 id="omlTitel">Omleiding</h3>
+    <div id="omlInhoud"><p class="hint">Laden…</p></div>
+  </div>
+</div>
+
+<!-- Ritscore (einde van elke rit) -->
+<div class="overlay" id="scoreov">
+  <div class="blad">
+    <button class="knop sluit" id="scoreSluit">Sluiten</button>
+    <h3 id="scoreTitel">Rit voltooid</h3>
+    <div id="scoreInhoud"></div>
+  </div>
+</div>
+
+<!-- Installatiehulp (op startscherm zetten) -->
+<div class="overlay" id="instalhulp">
+  <div class="blad">
+    <button class="knop sluit" id="instalSluit">Sluiten</button>
+    <h3>Op je startscherm zetten</h3>
+    <div id="instalStappen"></div>
+  </div>
+</div>
+
+<!-- Opstartscherm: logo + disclaimer/privacy/bronvermelding (wegklikken om te starten) -->
+<div id="intro">
+  <div class="merk">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <defs><linearGradient id="rpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b2fd6"/><stop offset="1" stop-color="#5b21b6"/></linearGradient></defs>
+      <circle cx="60" cy="60" r="56" fill="url(#rpg)"/>
+      <g transform="rotate(-22 60 60)">
+        <ellipse cx="60" cy="60" rx="41" ry="30" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="3"/>
+        <circle cx="96" cy="56" r="2.6" fill="#fff"/>
+        <circle cx="99" cy="48" r="4.6" fill="#fff"/>
+        <circle cx="97" cy="39" r="2.2" fill="#fff"/>
+      </g>
+      <text x="60" y="61" text-anchor="middle" dominant-baseline="central" font-family="system-ui,-apple-system,sans-serif" font-size="44" font-weight="800" fill="#fff">BP</text>
+    </svg>
+    <div>
+      <div class="naam">Buspilot</div>
+      <div class="slo">hulp-boordcomputer</div>
+    </div>
+  </div>
+  <div class="info">
+    <b>Onafhankelijk hulpmiddel.</b> De getoonde tijden, routes en posities zijn indicatief en kunnen afwijken van de werkelijkheid. Blijf steeds zelf opletten in het verkeer.
+    <br><br>
+    <b>Privacy.</b> Je locatie wordt enkel op dit toestel gebruikt om je positie op de route te tonen. Ze wordt nergens bewaard of doorgestuurd.
+    <br><br>
+    <b>Bron.</b> Dienstregeling: zelf geplande netten (net-bouwer). Kaart: © OpenStreetMap.
+    <div class="onaf">Onafhankelijk project — niet verbonden aan, noch goedgekeurd door een vervoermaatschappij.</div>
+  </div>
+  <button class="start" id="introOk">Begrepen — start</button>
+</div>
+
+<!-- Gate -->
+<div id="gate">
+  <div>
+    <h2>Even inloggen</h2>
+    <p class="hint">Log eerst in om je omloop te openen.</p>
+    <a class="knop primair" href="/login?terug=/boord/">Naar inloggen</a>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ===== data ===== */
+let INDEX = null, DIENSTEN = null, LIJNEN = null, LIJNBESTANDEN = null, OMLINDEX = null;
+const STELPCACHE = {}, LIJNFILE = {};
+async function haal(p) { const r = await fetch(p, { cache: "default" }); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); }
+async function basis() {
+  if (INDEX) return;
+  // omloop-index.json (~86 KB) laden we NIET bij elke start: het is enkel nodig om via nummer te
+  // zoeken. Wie via stelplaats kiest, downloadt het nooit. Zo blijft een koude start licht op mobiel.
+  [INDEX, DIENSTEN, LIJNEN, LIJNBESTANDEN] = await Promise.all([
+    haal("/gtfs/gepland/index.json"), haal("/gtfs/gepland/diensten.json"),
+    haal("/gtfs/lijnen.json"), haal("/gtfs/lijn-bestanden.json"),
+  ]);
+}
+// Eén stelplaatsbestand laden en cachen. Grote stelplaatsen worden in delen (<afk>.p0.json, …)
+// geschreven omdat de app een JSON-antwoord afkapt rond 879873 tekens; <afk>.json is dan een manifest
+// {afk, naam, parts}. Deze helper voegt de delen samen, zodat ook omlopen uit een opgesplitste
+// stelplaats (bv. Gentbrugge/GBR) vindbaar zijn. Kleine stelplaatsen blijven één bestand met omlopen.
+async function stelpData(afk) {
+  if (!STELPCACHE[afk]) STELPCACHE[afk] = (async () => {
+    const m = await haal(`/gtfs/gepland/${afk}.json`);
+    if (!m || m.omlopen || !m.parts) return m;
+    const omlopen = {};
+    const delen = await Promise.all(Array.from({ length: m.parts }, (_, k) =>
+      haal(`/gtfs/gepland/${afk}.p${k}.json`).catch(() => null)));
+    for (const d of delen) if (d && d.omlopen) Object.assign(omlopen, d.omlopen);
+    return { afk: m.afk, naam: m.naam, omlopen };
+  })();
+  return STELPCACHE[afk];
+}
+async function lijnFile(idx) {
+  if (LIJNFILE[idx] === undefined) { try { LIJNFILE[idx] = await haal(`/gtfs/l/${idx}.json`); } catch { LIJNFILE[idx] = null; } }
+  return LIJNFILE[idx];
+}
+const lijnNr = d0 => (LIJNEN && LIJNEN[d0] && LIJNEN[d0][0]) || d0;
+const lijnKleur = d0 => (LIJNEN && LIJNEN[d0] && LIJNEN[d0][1]) ? "#" + LIJNEN[d0][1] : "#444";
+const lijnTekst = d0 => (LIJNEN && LIJNEN[d0] && LIJNEN[d0][2]) ? "#" + LIJNEN[d0][2] : "#fff";
+// Vaste, sterk-paarse kleur voor de te volgen route op de kaart. Paars komt niet voor in de
+// OpenStreetMap-achtergrond, dus de lijn springt er altijd goed uit (ongeacht de lijnkleur).
+const ROUTEKLEUR = "#7e22ce";
+
+/* ===== tijd & meetkunde ===== */
+const _toMin = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const _fmtMin = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const _norm = s => String(s || "").replace(/\s*perron.*$/i, "").trim().toLowerCase();
+function meter(a, b) {
+  const R = 6371000, rad = Math.PI / 180;
+  const p1 = a[0] * rad, p2 = b[0] * rad, dp = (b[0] - a[0]) * rad, dl = (b[1] - a[1]) * rad;
+  const x = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+// Projecteer punt p op segment a-b (in lokale vlakke benadering). Geeft {t in [0,1], d meter}.
+function projSeg(p, a, b) {
+  const latm = 111320, lonm = 111320 * Math.cos(p[0] * Math.PI / 180);
+  const ax = a[1] * lonm, ay = a[0] * latm, bx = b[1] * lonm, by = b[0] * latm, px = p[1] * lonm, py = p[0] * latm;
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0; t = Math.max(0, Math.min(1, t));
+  const cx = ax + dx * t, cy = ay + dy * t;
+  return { t, d: Math.hypot(px - cx, py - cy) };
+}
+
+/* ===== rit opbouwen (zelfde logica als de website) ===== */
+// Kiest de juiste variant louter op basis van de ritgegevens (vertrekuur, begin- en eindhalte).
+// We trekken ons niets aan van gemelde omleidingen: de boordcomputer toont de geplande variant.
+function zoekVariant(files, van, naar, vert) {
+  let best = null, bestScore = 0;
+  for (const lf of files) {
+    if (!lf || !lf.directions) continue;
+    for (const d of lf.directions) for (const v of (d.variants || [])) {
+      const stops = v.stops || []; if (!stops.length) continue;
+      const heeftDep = (v.deps || []).some(x => x[0] === vert);
+      const s0 = _norm(stops[0][0]), sN = _norm(stops[stops.length - 1][0]);
+      const heeftVan = stops.some(s => _norm(s[0]) === _norm(van));
+      const heeftNaar = stops.some(s => _norm(s[0]) === _norm(naar)) || _norm(v.head) === _norm(naar);
+      let sc = 0;
+      if (heeftDep) sc += 4;
+      if (s0 === _norm(van)) sc += 2; else if (heeftVan) sc += 1;
+      if (sN === _norm(naar) || _norm(v.head) === _norm(naar)) sc += 2; else if (heeftNaar) sc += 1;
+      if (sc > bestScore) { bestScore = sc; best = { lf, v }; }
+    }
+  }
+  return bestScore >= 3 ? best : null;
+}
+// Koppelt de rit aan EXACT de juiste variant: de variant die vanaf deze beginhalte (`van`) op dit
+// vertrekuur (`vert`) rijdt op een dienst die op de gekozen dag (`dag`, bv. "20261018") actief is.
+// Een variant bewaart per vertrek [uur, dienst-index-in-svcs]; we matchen op de dienst-ID die die dag
+// rijdt. Zo krijgen we de dag-correcte route (dezelfde rit kan per dagtype een andere variant hebben).
+// Geeft null als er geen dag-/dienstgegevens zijn of niets exact past, zodat we kunnen terugvallen.
+function koppelVariant(files, van, naar, vert, dag) {
+  const idx = DIENSTEN && DIENSTEN.dagen && DIENSTEN.dagen[dag];
+  if (!idx || !DIENSTEN.svc) return null;
+  const actiefIds = new Set(idx.map(i => DIENSTEN.svc[i]));
+  let best = null;
+  for (const lf of files) {
+    if (!lf || !lf.directions) continue;
+    for (const d of lf.directions) for (const v of (d.variants || [])) {
+      const stops = v.stops || []; if (!stops.length) continue;
+      if (_norm(stops[0][0]) !== _norm(van)) continue;
+      for (const dp of (v.deps || [])) {
+        if (dp[0] !== vert) continue;
+        if (!actiefIds.has((v.svcs || [])[dp[1]])) continue;
+        const prof = (v.profs && dp[2] != null) ? v.profs[dp[2]] : null;
+        const naarOk = _norm(stops[stops.length - 1][0]) === _norm(naar) || _norm(v.head) === _norm(naar);
+        if (naarOk) return { lf, v, prof };
+        if (!best) best = { lf, v, prof };
+      }
+    }
+  }
+  return best;
+}
+// Aansluitingsherstel: eindigt deze rit op exact hetzelfde uur als een aansluitende rit (zelfde omloop
+// én gedeelde dienst) vertrekt, maar op een ándere halte, dan is de getoonde eindhalte verouderd (de
+// terminus is tijdelijk verplaatst en De Lijn paste wel de volgende rit aan, maar deze niet). We nemen
+// dan de beginhalte van die aansluitende rit, net als de website.
+// Haltenaam normaliseren + "is dit dezelfde plaats?" (accenten/leestekens/perron weg; de ene naam is
+// de andere plus extra woorden, bv. "Volvo" en "Volvo Cars"). Voorkomt valse lege ritten tussen twee
+// ritten die in werkelijkheid op dezelfde halte eindigen en beginnen.
+const _plaats = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().replace(/\s*perron\s*\d+\s*/gi, " ").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+function zelfdePlaats(a, b) {
+  const x = _plaats(a), y = _plaats(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const kort = x.length <= y.length ? x : y, lang = x.length <= y.length ? y : x;
+  return lang.startsWith(kort + " ");
+}
+function naarCorrectie(row) {
+  const naar = row[3], aankomst = row[5];
+  if (!aankomst || !naar || !OMLOOP) return naar;
+  const kand = OMLOOP.ritten.filter(o => o !== row && o[4] === aankomst && o[2] && !zelfdePlaats(o[2], naar) && (o[6] || []).some(s => (row[6] || []).includes(s)));
+  return kand.length === 1 ? kand[0][2] : naar;
+}
+// Lege (materiaal)rit tussen twee opeenvolgende ritten: eindigt de vorige rit op een andere plaats dan
+// waar de volgende vertrekt (een ander perron op dezelfde halte telt niet mee), dan rijdt de bus daar
+// leeg tussen. Geeft {van, naar, vert, aank} of null.
+function legeRitTussen(vorige, volgende) {
+  if (!vorige || !volgende || !vorige[3] || !volgende[2]) return null;
+  if (zelfdePlaats(vorige[3], volgende[2])) return null;
+  // Zelfde plek op de kaart? Vergelijk de échte laatste halte (laatste doorkomst) van de vorige rit met
+  // de eerste halte (eerste doorkomst) van de volgende rit. Zo sluiten heen- en terugritten aan — ook als
+  // het keerpunt in beide routes een andere naam draagt — en vermijden we onnodige lege ritten (~300 m,
+  // net als de omloopgenerator in de net-bouwer).
+  if (keerpuntDichtbij(vorige, volgende)) return null;
+  return { van: vorige[3], naar: volgende[2], vert: vorige[5], aank: volgende[4] };
+}
+const AANSLUIT_M = 300;
+function keerpuntDichtbij(vorige, volgende) {
+  const rp = OMLOOP && OMLOOP.routes && OMLOOP.routes[vorige[8] || ""];
+  const rv = OMLOOP && OMLOOP.routes && OMLOOP.routes[volgende[8] || ""];
+  const ha = rp && Array.isArray(rp.haltes) && rp.haltes[rp.haltes.length - 1]; // laatste halte vorige rit
+  const hb = rv && Array.isArray(rv.haltes) && rv.haltes[0];                     // eerste halte volgende rit
+  if (!ha || !hb || ha[1] == null || hb[1] == null) return false;
+  return meter([ha[1], ha[2]], [hb[1], hb[2]]) <= AANSLUIT_M;
+}
+// Een punt `meters` vóór (before=true) of ná (before=false) halte p0, in de richting van vormpunt p1.
+function _approach(p0, p1, meters, before) {
+  const latm = 111320, lonm = 111320 * Math.cos(p0[0] * Math.PI / 180);
+  let dx = (p1[1] - p0[1]) * lonm, dy = (p1[0] - p0[0]) * latm; const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+  const s = before ? -1 : 1;
+  return [p0[0] + s * dy * meters / latm, p0[1] + s * dx * meters / lonm];
+}
+// Bouwt een lege (materiaal)rit als recht segment tussen twee punten, zodat ze meerijdt op de kaart met
+// de gewone rijschermlogica (positie, voortgangsbalk, overgang op 20 m). De stelplaats zelf zit niet in
+// de data: voor een stelplaatsrit synthetiseren we een punt ~400 m vóór/ná de bekende halte als beginpunt.
+async function bouwLegeRit(desc) {
+  let A = null, B = null, aPts = null, bPts = null;
+  if (desc.volgende != null) { const rv = await bouwRit(OMLOOP.ritten[desc.volgende]); if (rv && rv.halten.length) { B = rv.halten[0]; bPts = rv.pts; } }
+  if (desc.vorige != null) { const rp = await bouwRit(OMLOOP.ritten[desc.vorige]); if (rp && rp.halten.length) { A = rp.halten[rp.halten.length - 1]; aPts = rp.pts; } }
+  const vorigeRow = desc.vorige != null ? OMLOOP.ritten[desc.vorige] : null;
+  const volgRow = desc.volgende != null ? OMLOOP.ritten[desc.volgende] : null;
+  const startM = vorigeRow ? _toMin(vorigeRow[5]) : (volgRow ? _toMin(volgRow[4]) - 5 : null);
+  const eindM = volgRow ? _toMin(volgRow[4]) : (vorigeRow ? _toMin(vorigeRow[5]) + 5 : null);
+  let halten, pts, vanNaam, naarNaam;
+  if (A && B) {                              // tussen twee ritten: beide haltes bekend
+    vanNaam = A.naam; naarNaam = B.naam;
+    pts = [[A.lat, A.lon], [B.lat, B.lon]];
+    halten = [{ naam: A.naam, lat: A.lat, lon: A.lon, min: startM, tijd: _fmtMin(startM) },
+              { naam: B.naam, lat: B.lat, lon: B.lon, min: eindM, tijd: _fmtMin(eindM) }];
+  } else if (B) {                            // vanaf stelplaats → eerste halte: enkel het doel, geen nep-route
+    return { rit: "leeg", d0: "", van: "Stelplaats", naar: B.naam, vert: _fmtMin(startM), aankomst: _fmtMin(eindM),
+             enkelDoel: true, doel: [B.lat, B.lon], pts: [], geo: null,
+             halten: [{ naam: B.naam, lat: B.lat, lon: B.lon, min: eindM, tijd: _fmtMin(eindM) }] };
+  } else if (A) {                            // laatste halte → stelplaats: enkel de halte, geen nep-route
+    return { rit: "leeg", d0: "", van: A.naam, naar: "Stelplaats", vert: _fmtMin(startM), aankomst: _fmtMin(eindM),
+             enkelDoel: true, doel: [A.lat, A.lon], pts: [], geo: null,
+             halten: [{ naam: A.naam, lat: A.lat, lon: A.lon, min: startM, tijd: _fmtMin(startM) }] };
+  } else return null;
+  return { rit: "leeg", d0: "", van: vanNaam, naar: naarNaam, vert: _fmtMin(startM), aankomst: _fmtMin(eindM), halten, pts, geo: bouwGeo(halten, pts) };
+}
+async function startLegeRit(desc) {
+  if (!desc) return false;
+  toast("Lege rit laden…", 1500);
+  const rit = await bouwLegeRit(desc);
+  if (!rit || !rit.pts || rit.pts.length < 2) { toast("Geen routegegevens voor deze lege rit."); return false; }
+  RIT = rit;
+  _rwVerberg();   // lege (materiaal)rit: geen reizigersroute om te controleren
+  RITI = (desc.volgende != null) ? desc.volgende : desc.vorige; // geldige index voor de header-referenties
+  _legeModus = true; _legeVolg = (desc.volgende != null) ? desc.volgende : null; _legeBezig = false; _enkelRef = null;
+  _omloopKlaar = false; _eindBezig = false;
+  startRijden();
+  return true;
+}
+// Bouwt {halten:[{tijd,naam,lat,lon,min}], pts, route-meetkunde} voor één geplande rit-rij.
+// Eigen net: de rit opbouwen uit de meegestuurde route (haltes + reistijden + vormlijn), zonder GTFS.
+// Zelfde vorm als bouwRit ({halten, pts, geo}) zodat het rij-/kaartscherm en het gps-volgen gewoon werken.
+function bouwRitEigen(row) {
+  const [rit, d0, van, naar, vert, aankomst] = row;
+  const route = (OMLOOP && OMLOOP.routes && OMLOOP.routes[row[8] || ""]) || null;
+  if (!route || !Array.isArray(route.haltes) || !route.haltes.length) return null;
+  const hs = route.haltes; // [naam, lat, lon, reistijd]
+  const dm = _toMin(vert); let t = (dm != null ? dm : 0);
+  const halten = hs.map((h, i) => {
+    const tm = (i === 0 && dm != null) ? dm : t;
+    const o = { tijd: _fmtMin(tm), naam: h[0], lat: h[1], lon: h[2], min: tm };
+    t = tm + (h[3] || 0);
+    return o;
+  });
+  // Eindhalte op het opgeslagen aankomstuur zetten (consistent met het overzicht en de lijst).
+  const am = _toMin(aankomst);
+  if (am != null && halten.length) { const L = halten[halten.length - 1]; L.tijd = aankomst; L.min = am; }
+  const pts = (route.pts || []).filter(p => Array.isArray(p) && p[0] != null).map(p => [p[0], p[1]]);
+  const geo = bouwGeo(halten, pts);
+  return { rit, d0, van, naar, vert, aankomst, halten, pts, geo };
+}
+async function bouwRit(row) {
+  if (OMLOOP && OMLOOP.eigen) return bouwRitEigen(row);
+  const [rit, d0, van, , vert, aankomst] = row;
+  const naar = naarCorrectie(row); // eindhalte zoals de website (aansluitingsherstel)
+  const idxs = (LIJNBESTANDEN[d0] || []);
+  if (!idxs.length) return null;
+  const files = await Promise.all(idxs.map(lijnFile));
+  const m = koppelVariant(files, van, naar, vert, OMLOOP ? OMLOOP.dag : "") || zoekVariant(files, van, naar, vert);
+  if (!m) return null;
+  const stops = m.v.stops;
+  let vi = stops.findIndex(s => _norm(s[0]) === _norm(van)); if (vi < 0) vi = 0;
+  let ni = -1; for (let i = stops.length - 1; i >= vi; i--) if (_norm(stops[i][0]) === _norm(naar)) { ni = i; break; } if (ni < 0) ni = stops.length - 1;
+  const seg = stops.slice(vi, ni + 1);
+  // Exact tijdsprofiel van deze rit (cumulatieve minuten vanaf de beginhalte) indien beschikbaar,
+  // anders de offset-methode (één variantschema verschoven naar het vertrekuur).
+  const prof = m.prof, dm = _toMin(vert);
+  const profBasis = (prof && prof[vi] != null) ? prof[vi] : null;
+  const base = _toMin(stops[vi][3]), off = (base != null && dm != null) ? dm - base : 0;
+  const tijdVoor = (s, i) => {
+    const abs = vi + i;
+    if (prof && dm != null && prof[abs] != null && profBasis != null) return _fmtMin(dm + prof[abs] - profBasis);
+    if (i === 0 && vert) return vert;
+    if (i === seg.length - 1 && aankomst) return aankomst;
+    const mm = _toMin(s[3]); return mm != null ? _fmtMin(mm + off) : String(s[3] || "").slice(0, 5);
+  };
+  const halten = seg.map((s, i) => { const t = tijdVoor(s, i); return { tijd: t, naam: s[0], lat: s[1], lon: s[2], min: _toMin(t), id: s[4] != null ? String(s[4]) : null }; });
+  const pts = (m.v.pts || []).filter(p => p && p[0] != null).map(p => [p[0], p[1]]);
+  const geo = bouwGeo(halten, pts);
+  return { rit, d0, van, naar, vert, aankomst, halten, pts, geo, limieten: m.v.lim || null };
+}
+// Cumulatieve afstanden langs de vormlijn + de positie (meter langs route) van elke halte.
+function bouwGeo(halten, pts) {
+  if (pts.length < 2) {
+    // Geen vormlijn: val terug op de halten zelf als "route".
+    const hp = halten.map(h => [h.lat, h.lon]).filter(p => p[0] != null);
+    const cum = [0]; for (let i = 1; i < hp.length; i++) cum.push(cum[i - 1] + meter(hp[i - 1], hp[i]));
+    return { pts: hp, cum, halteS: cum.slice(), totaal: cum[cum.length - 1] || 1 };
+  }
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + meter(pts[i - 1], pts[i]));
+  const totaal = cum[cum.length - 1] || 1;
+  const halteS = halten.map(h => {
+    if (h.lat == null) return null;
+    let bestD = Infinity, bestS = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const pr = projSeg([h.lat, h.lon], pts[i], pts[i + 1]);
+      if (pr.d < bestD) { bestD = pr.d; bestS = cum[i] + pr.t * (cum[i + 1] - cum[i]); }
+    }
+    return bestS;
+  });
+  // Zorg dat de halte-afstanden monotoon stijgen (anders klopt de interpolatie niet).
+  for (let i = 1; i < halteS.length; i++) if (halteS[i] == null || halteS[i] < halteS[i - 1]) halteS[i] = Math.max(halteS[i - 1], halteS[i] ?? halteS[i - 1]);
+  return { pts, cum, halteS, totaal };
+}
+// Kompaskoers (graden, 0=noord, met de klok mee) van punt a naar b, beide [lat,lon].
+// Met lengtegraad-correctie (× cos breedtegraad): op de kaart is een graad lengte smaller dan
+// een graad breedte, dus zonder die factor lijken schuine wegen scheef i.p.v. recht naar boven.
+function koers(a, b) {
+  const dLat = b[0] - a[0], dLon = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180);
+  return Math.atan2(dLon, dLat) * 180 / Math.PI;
+}
+// Snap een gps-punt op de route: geeft {s meter, lat, lon, hoek graden}.
+function snap(pos, geo) {
+  const pts = geo.pts; let bestD = Infinity, bestS = 0, bi = 0, bt = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const pr = projSeg(pos, pts[i], pts[i + 1]);
+    if (pr.d < bestD) { bestD = pr.d; bi = i; bt = pr.t; bestS = geo.cum[i] + pr.t * (geo.cum[i + 1] - geo.cum[i]); }
+  }
+  const a = pts[bi], b = pts[bi + 1] || pts[bi];
+  const lat = a[0] + (b[0] - a[0]) * bt, lon = a[1] + (b[1] - a[1]) * bt;
+  const hoek = koers(a, b);
+  return { s: bestS, lat, lon, hoek, afstand: bestD };
+}
+// Geplande tijd (minuten) op positie s langs de route, geïnterpoleerd tussen de halten.
+function schemaOp(s, halten, halteS) {
+  const n = halten.length;
+  if (s <= halteS[0]) return halten[0].min;
+  for (let i = 0; i < n - 1; i++) {
+    if (s <= halteS[i + 1]) {
+      const span = halteS[i + 1] - halteS[i] || 1;
+      const f = (s - halteS[i]) / span;
+      return halten[i].min + (halten[i + 1].min - halten[i].min) * f;
+    }
+  }
+  return halten[n - 1].min;
+}
+// Omgekeerd: positie s waar de geplande tijd = doelMin (voor de simulatie).
+function posOpTijd(doelMin, halten, halteS) {
+  const n = halten.length;
+  if (doelMin <= halten[0].min) return halteS[0];
+  for (let i = 0; i < n - 1; i++) {
+    if (doelMin <= halten[i + 1].min) {
+      const dt = halten[i + 1].min - halten[i].min || 1;
+      const f = (doelMin - halten[i].min) / dt;
+      return halteS[i] + (halteS[i + 1] - halteS[i]) * f;
+    }
+  }
+  return halteS[n - 1];
+}
+
+/* ===== toestand ===== */
+let OMLOOP = null;     // {afk, key, ritten:[rows], dag}
+let RITI = -1;         // index in OMLOOP.ritten
+let RIT = null;        // bouwRit-resultaat
+let _ritStat = null;   // meting voor de ritscore: {devs:[afwijking per halte], lastFi, off, tot}
+let watchId = null, simAan = false, simLead = 0, simTimer = null;
+let laatsteSnap = null;
+let laatstePos = null;  // laatst bekende ruwe GPS-positie [lat,lon], om bij een ritwissel opnieuw te snappen
+let _bewHoek = null;    // laatst bekende rijrichting (graden, 0=noord) — voor het draaien van de kaart
+let _snelheid = null;   // huidige snelheid in km/u (null = nog onbekend), licht afgevlakt
+let _vorigeT = 0;       // tijdstip van de vorige GPS-fix, om snelheid uit verplaatsing te schatten
+let volgModus = true;  // standaard volgmodus (kaart volgt de bus); tik 🎯 om vrij te bewegen
+let _volgNu = null, _volgDoel = null, _volgAnim = null; // vloeiende volgmodus (geanimeerde positie/richting)
+const VOORUITKIJK = 70; // max. meter dat we vooruitkijken langs de route om de kaart te richten. De
+                        // vooruitblik stopt bij de eerstvolgende scherpe bocht (zie richtHoek), zodat de
+                        // lijn recht blijft in flauwe bochten maar de kaart niet al vóór een afslag draait.
+let navAan = false;     // eenvoudige navigatie-instructies tonen
+// Debug-toegang (voor tests en nazicht); heeft geen effect op de werking.
+window.__b = { get RIT() { return RIT; }, get snap() { return laatsteSnap; }, get simLead() { return simLead; }, get OMLOOP() { return OMLOOP; } };
+
+function nu() { const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60; }
+// Tot dit uur 's ochtends blijft de dienstdag van 'gisteren' nog actief: De Lijn codeert ritten na
+// middernacht als 24:00–30:00 binnen de dienstdag van de dag ervoor, dus die omloop rijdt nog door.
+const NACHT_UREN = 6;
+function gisterenYmd() { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`; }
+// Effectieve 'nu' in de dienstdag-frame van de actieve omloop: rijden we 's nachts (voor NACHT_UREN) nog
+// verder op een omloop van een vorige dag, dan ligt de echte tijd 24 u verder in die frame (00:18 = 1458 min).
+function nuRit() { const n = nu(); return (OMLOOP && OMLOOP.dag && OMLOOP.dag < vandaagYmd() && n < NACHT_UREN * 60) ? n + 1440 : n; }
+// Live klok exact zoals de telefoon: het lopende minuut-getal (afkappen, NIET afronden). _fmtMin rondt
+// af en liep daardoor tot ~30 s vóór de telefoonklok uit; dit toont hetzelfde uur als de telefoon.
+function klokStr() { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+function klokHHMMSS(secLeft) {
+  secLeft = Math.max(0, Math.round(secLeft));
+  const h = Math.floor(secLeft / 3600), m = Math.floor((secLeft % 3600) / 60), s = secLeft % 60;
+  return (h ? String(h).padStart(2, "0") + ":" : "") + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+/* ===== schermen wisselen ===== */
+// Scherm wakker houden zolang de boordcomputer actief is (niet op het setup-scherm). De Wake Lock
+// wordt vrijgegeven zodra het tabblad verborgen raakt (telefoon vergrendeld / app op de achtergrond),
+// dus we vragen ze opnieuw aan zodra het scherm weer zichtbaar is.
+let _wakeLock = null, _wakeGewenst = false;
+async function schermWakker() {
+  if (!_wakeGewenst || !("wakeLock" in navigator) || document.visibilityState !== "visible" || _wakeLock) return;
+  try { _wakeLock = await navigator.wakeLock.request("screen"); _wakeLock.addEventListener("release", () => { _wakeLock = null; }); } catch { _wakeLock = null; }
+}
+function schermLosLaten() { _wakeGewenst = false; try { _wakeLock && _wakeLock.release(); } catch {} _wakeLock = null; }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schermWakker(); });
+function toon(id) {
+  for (const s of ["setup", "pauze", "overzicht", "rij"]) $(s).classList.toggle("aan", s === id);
+  if (id === "setup") schermLosLaten(); else { _wakeGewenst = true; schermWakker(); }
+}
+
+/* ===== opstart: dagen + stelplaatsen ===== */
+// Enkel vandaag, morgen en overmorgen (met dag + datum), en enkel als die dag in de data zit.
+const WD = ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"];
+function vandaagYmd() { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`; }
+function vulDagen() {
+  const dagen = Object.keys(DIENSTEN.dagen || {}).sort();
+  const vdg = vandaagYmd(), opts = [];
+  // 's Nachts (voor NACHT_UREN) blijft 'gisteren' kiesbaar: die dienstdag rijdt nog (nachtritten 24:00+).
+  if (nu() < NACHT_UREN * 60) {
+    const gy = gisterenYmd();
+    const g = new Date(+gy.slice(0, 4), +gy.slice(4, 6) - 1, +gy.slice(6, 8));
+    if (dagen.includes(gy)) opts.push(`<option value="${gy}">Gisteren · ${WD[g.getDay()]} ${gy.slice(6, 8)}/${gy.slice(4, 6)}</option>`);
+  }
+  // Alle gekende dienstdagen vanaf vandaag tot het einde van de dienstregeling tonen (zo ver als gekend).
+  const tag = ymd => ymd === vdg ? "Vandaag · " : ymd === isoPlus(1) ? "Morgen · " : ymd === isoPlus(2) ? "Overmorgen · " : "";
+  for (const ymd of dagen) {
+    if (ymd < vdg) continue; // verleden overslaan ('gisteren' staat 's nachts al apart bovenaan)
+    const d = new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8));
+    opts.push(`<option value="${ymd}">${tag(ymd)}${WD[d.getDay()]} ${ymd.slice(6, 8)}/${ymd.slice(4, 6)}/${ymd.slice(0, 4)}</option>`);
+  }
+  $("omldag").innerHTML = opts.join("") || `<option value="">(geen dienstregeling)</option>`;
+  // Standaard 'vandaag' selecteren (ook al staat 'gisteren' er 's nachts boven).
+  if (dagen.includes(vdg)) $("omldag").value = vdg;
+}
+function dagLabel(ymd) {
+  if (!ymd || ymd.length < 8) return "";
+  const d = new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8));
+  const tag = ymd === vandaagYmd() ? "Vandaag · " : (ymd === gisterenYmd() ? "Gisteren · " : (ymd === isoPlus(1) ? "Morgen · " : (ymd === isoPlus(2) ? "Overmorgen · " : "")));
+  return `${tag}${WD[d.getDay()]} ${ymd.slice(6, 8)}/${ymd.slice(4, 6)}/${ymd.slice(0, 4)}`;
+}
+function isoPlus(n) { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`; }
+/* ===== dataversie: weten of je écht de nieuwste dienstregeling hebt =====
+   Bron van waarheid is /gtfs/feed_version.txt ("start_eind_tijd"). We vergelijken de versie die we
+   volledig gedownload hebben (bewaard in localStorage) met de nieuwste op de server — die halen we
+   langs de service-worker om op via een cache-buster. Zo wéét de app of ze de laatste versie heeft,
+   i.p.v. te gokken op de bouwdag. */
+let LOADED_FEED = null;   // versie die we volledig binnen hebben
+let SERVER_FEED = null;   // nieuwste versie op de server (null = niet kunnen nakijken)
+try { LOADED_FEED = localStorage.getItem("bp_feed") || null; } catch {}
+function parseFeed(v) { const m = /^(\d{8})_(\d{8})/.exec(v || ""); return m ? { start: m[1], eind: m[2] } : null; }
+async function serverFeed() {
+  try { return ((await fetch("/gtfs/feed_version.txt?v=" + Date.now(), { cache: "reload" }).then(r => r.text())) || "").trim() || null; }
+  catch { return null; }
+}
+function onthoudFeed(v) { if (!v) return; LOADED_FEED = v; try { localStorage.setItem("bp_feed", v); } catch {} }
+function toonVersie() {
+  const el = $("dataversie"); if (!el) return;
+  const fv = parseFeed(LOADED_FEED || SERVER_FEED);
+  const dm = y => `${y.slice(6, 8)}/${y.slice(4, 6)}/${y.slice(0, 4)}`;
+  const vandaag = vandaagYmd();
+  if (SERVER_FEED === null && !LOADED_FEED) { el.innerHTML = `<span class="fout">Niet nagekeken — geen verbinding</span>`; return; }
+  if (SERVER_FEED && LOADED_FEED && SERVER_FEED !== LOADED_FEED) { el.innerHTML = `<span class="fout">⚠ Nieuwe dienstregeling — tik Vernieuwen</span>`; return; }
+  if (fv && vandaag > fv.eind) { el.innerHTML = `<span class="fout">⚠ Dienstregeling verlopen op ${dm(fv.eind)} — vernieuw</span>`; return; }
+  if (SERVER_FEED === null) { el.innerHTML = `Dienstregeling <span class="hint">(kon niet nakijken)</span>`; return; }
+  el.innerHTML = `<span class="goed">✓ Nieuwste dienstregeling</span>`;
+}
+// Haalt de kern-dienstregeling vers op (om de cache/service-worker heen via een cache-buster), zodat de
+// omlopen juist staan vóór je eerste rit. Draait ook stil bij het opstarten als er een nieuwere versie is.
+async function refreshData(stil) {
+  const bust = "?v=" + Date.now();
+  try {
+    const [i, di, li, lb, fv] = await Promise.all([
+      fetch("/gtfs/gepland/index.json" + bust, { cache: "reload" }).then(r => r.json()),
+      fetch("/gtfs/gepland/diensten.json" + bust, { cache: "reload" }).then(r => r.json()),
+      fetch("/gtfs/lijnen.json" + bust, { cache: "reload" }).then(r => r.json()),
+      fetch("/gtfs/lijn-bestanden.json" + bust, { cache: "reload" }).then(r => r.json()),
+      fetch("/gtfs/feed_version.txt" + bust, { cache: "reload" }).then(r => r.text()).catch(() => null),
+    ]);
+    INDEX = i; DIENSTEN = di; LIJNEN = li; LIJNBESTANDEN = lb;
+    for (const k in STELPCACHE) delete STELPCACHE[k];
+    for (const k in LIJNFILE) delete LIJNFILE[k];
+    OMLINDEX = null;
+    if (fv && fv.trim()) { SERVER_FEED = fv.trim(); onthoudFeed(fv.trim()); }  // we hebben nu zeker de nieuwste binnen
+    vulDagen(); toonVersie();
+    if (!stil) toast("Dienstregeling vernieuwd");
+    return true;
+  } catch { if (!stil) toast("Vernieuwen mislukt — geen verbinding?"); return false; }
+}
+function actieveSvc() { return new Set((DIENSTEN.dagen || {})[$("omldag").value] || []); }
+function rittenVan(data, key) {
+  const svc = actieveSvc();
+  return (data.omlopen[key] || []).filter(r => (r[6] || []).some(s => svc.has(s))).sort((a, b) => (a[4] || "").localeCompare(b[4] || ""));
+}
+// Dienstdagen (vandaag + toekomst) waarop een omloop volgens de kandidaat-stelplaatsen wél rijdt. Dient
+// voor een nette melding wanneer de omloop wél bestaat maar niet op de gekozen dag rijdt (veel omlopen
+// rijden enkel bepaalde dagen, bv. een schooldag of een woensdag — of niet op zon- en feestdagen).
+async function omloopRijdagen(bron) {
+  const dagen = DIENSTEN.dagen || {};
+  const vandaag = vandaagYmd();
+  const dagLijst = Object.keys(dagen).sort().filter(d => d >= vandaag);
+  const uit = new Set();
+  for (const [afk, key] of bron) {
+    let data; try { data = await stelpData(afk); } catch { continue; }
+    const arr = (data.omlopen || {})[key]; if (!arr || !arr.length) continue;
+    const svcs = new Set(); for (const r of arr) for (const s of (r[6] || [])) svcs.add(s);
+    for (const d of dagLijst) { const set = dagen[d]; if (set && set.some(s => svcs.has(s))) uit.add(d); }
+  }
+  return [...uit].sort();
+}
+
+/* De aparte stelplaatskeuze is verwijderd; je kiest nu enkel via het omloopnummer of de stelplaatscode. */
+
+/* ===== omloop kiezen via nummer ===== */
+async function zoekOpNummer() {
+  const ruw = $("omlnr").value.trim().replace(/\s/g, "");
+  $("zoekfout").textContent = "";
+  if (!ruw) { $("zoekfout").textContent = "Geef een omloopnummer of stelplaatscode in."; return; }
+  if (!OMLINDEX) { try { OMLINDEX = await haal("/gtfs/gepland/omloop-index.json"); } catch { OMLINDEX = {}; } }
+  const byRit = OMLINDEX.byRit || {}, byNr = OMLINDEX.byNr || {};
+  let bron = [];
+  const mKey = /^(\d+)-(\d+)$/.exec(ruw);
+  if (mKey) {
+    // Vorm "214-6300" = stelplaatsnummer-omloop: enkel exact die sleutel. Het stelplaatsnummer moet
+    // juist zijn — een verkeerd nummer zoals "000-6300" mag NIET terugvallen op een andere stelplaats.
+    const snr = mKey[1], oml = mKey[2].padStart(4, "0"), key = `${snr}-${oml}`;
+    for (const pair of (byNr[oml] || [])) if (pair[1] === key) bron.push(pair);
+    if (!bron.length) for (const arr of Object.values(byNr)) for (const pair of arr) if (pair[1] === key) bron.push(pair);
+  } else {
+    // Ritorder (entiteit+omloop), kaal nummer, en als het met een entiteitcijfer begint ook zonder dat cijfer.
+    bron = byRit[ruw] || [];
+    if (!bron.length) bron = byNr[ruw] || [];
+    if (!bron.length && /^[1-5]\d{3,}$/.test(ruw)) bron = byNr[ruw.slice(1)] || [];
+  }
+  let treffers = [];
+  for (const [afk, key] of bron) {
+    let data; try { data = await stelpData(afk); } catch { continue; }
+    const rit = rittenVan(data, key);
+    if (rit.length) treffers.push({ afk, key, rit });
+  }
+  if (!treffers.length) {
+    // Bestaat de omloop wél, maar rijdt ze niet op de gekozen dag? Toon dan op welke dagen ze wél rijdt,
+    // als tikbare links die meteen die dag kiezen en opnieuw zoeken. Zo weet de chauffeur dat hij niets
+    // fout deed — de omloop rijdt gewoon niet vandaag (bv. zon-/feestdag of een dag-specifieke omloop).
+    const rijdagen = await omloopRijdagen(bron);
+    if (rijdagen.length) {
+      const links = rijdagen.slice(0, 8).map(d => `<a href="#" data-dag="${d}" class="rijdaglink" style="color:var(--blauw);font-weight:700;text-decoration:underline">${esc(dagLabel(d))}</a>`).join(", ");
+      $("zoekfout").innerHTML = `Omloop ${esc(ruw)} rijdt niet op de gekozen dag. Wel op: ${links}${rijdagen.length > 8 ? ", …" : ""}. Tik een dag om die te bekijken.`;
+      for (const a of $("zoekfout").querySelectorAll(".rijdaglink")) a.onclick = (e) => { e.preventDefault(); $("omldag").value = a.dataset.dag; zoekOpNummer(); };
+    } else {
+      $("zoekfout").textContent = bron.length ? `Omloop ${ruw} rijdt niet in de gekende dienstregeling.` : `Geen omloop ${ruw} gevonden.`;
+    }
+    return;
+  }
+  // Diepe link met een vooraf gekozen stelplaats (?afk=): meteen die starten, geen keuzemenu.
+  if (_autoAfk) { const m = treffers.find(t => t.afk === _autoAfk); _autoAfk = null; if (m) { startOmloop(m); return; } }
+  if (treffers.length === 1) { startOmloop(treffers[0]); return; }
+  // Meerdere stelplaatsen met dit nummer: laat kiezen.
+  const stelpNaam = afk => (INDEX.find(e => e.afk === afk) || {}).naam || afk;
+  $("menuTitel").textContent = `Omloop ${ruw} — kies je stelplaats`;
+  $("menuLijst").innerHTML = treffers.map((t, i) =>
+    `<button class="knop" data-tref="${i}"><b>${esc(stelpNaam(t.afk))}</b><br><small class="rn">${esc(t.rit.length)} ritten · lijn ${esc([...new Set(t.rit.map(r => lijnNr(r[1])))].join(", "))} · vanaf ${esc(t.rit[0][4])}</small></button>`
+  ).join("");
+  _treffers = treffers; menuOpen("tref");
+}
+let _treffers = null;
+let _autoAfk = null;          // vooraf gekozen stelplaats bij een diepe link (?afk=), voor auto-start
+
+/* ===== omloop starten ===== */
+// Meld het gebruik van een omloop aan de server (voor het beheerders-overzicht). Eén keer per omloop
+// per sessie, zodat het aantal schrijfbeurten laag blijft. Mislukt stil — het mag het starten nooit hinderen.
+function meldGebruik(code, afk) {
+  try {
+    const vlag = "bp-gebruik-" + code;
+    if (sessionStorage.getItem(vlag)) return;
+    sessionStorage.setItem(vlag, "1");
+  } catch {}
+  try {
+    fetch("/api/omloopgebruik", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, afk }) }).catch(() => {});
+  } catch {}
+}
+function startOmloop(t) {
+  menuSluit();
+  OMLOOP = { afk: t.afk, key: t.key, ritten: t.rit, dag: $("omldag").value };
+  meldGebruik(t.key, t.afk); // tel het gebruik (één keer per omloop per sessie)
+  // Bij het opstarten van de boordcomputer tonen we het opstartscherm (logo + disclaimer),
+  // één keer per sessie. Wegklikken met 'Begrepen'. Via het Rit-menu of de voettekst opnieuw te zien.
+  let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
+  if (eerste) toonIntro();
+  // Eerst een overzicht van de omloop tonen (met de best passende rit in het grijs).
+  toonOverzicht();
+}
+// Eigen (zelf gepland) net: laad de projectie via het afgeschermde endpoint en toon de omloop in het
+// overzicht (uren). Rijgeometrie ontbreekt nog, dus live gps-volgen per rit is hier (nog) uitgeschakeld.
+// Busnummer + (optioneel) type van de chauffeur, onthouden per eigen net in localStorage.
+function eigenBusLees(id) { try { return JSON.parse(localStorage.getItem("eigenbus/" + id) || "{}") || {}; } catch { return {}; } }
+function eigenBusBewaar(id, busnr, type) { try { localStorage.setItem("eigenbus/" + id, JSON.stringify({ busnr: busnr || "", type: type || "" })); } catch {} }
+async function startEigenOmloop(id, omloopKey, dag) {
+  try {
+    const r = await (await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "publiek-laad", id }) })).json();
+    if (!r.net || !r.net.projectie || !r.net.projectie.omlopen) { $("zoekfout").textContent = r.fout || "Eigen net niet gevonden of geen toegang."; return; }
+    const proj = r.net.projectie;
+    const d = (dag && /^\d{8}$/.test(dag)) ? dag : vandaagYmd();
+    const wd = new Date(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)).getDay() || 7;
+    const ritten = (proj.omlopen[omloopKey] || [])
+      .filter(r => Array.isArray(r[6]) && r[6].includes(wd))
+      .map(r => [String(r[0] || ""), String(r[1] || ""), String(r[2] || ""), String(r[3] || ""), String(r[4] || ""), String(r[5] || ""), r[6], (typeof r[7] === "number" ? r[7] : (+r[7] || 0)), String(r[8] || "")])
+      .sort((a, b) => String(a[4]).localeCompare(String(b[4])));
+    if (!ritten.length) { $("zoekfout").textContent = "Geen ritten voor deze omloop op de gekozen dag."; return; }
+    const bi = eigenBusLees(id);
+    OMLOOP = { afk: "eigen:" + id, key: omloopKey, ritten, dag: d, eigen: true, naam: r.net.naam || "Eigen net", routes: (proj.routes && typeof proj.routes === "object") ? proj.routes : {}, busnr: bi.busnr || "", busType: bi.type || "" };
+    toonOverzicht();
+  } catch { $("zoekfout").textContent = "Kon het eigen net niet laden."; }
+}
+let _ovzBest = 0;
+let _legeRitten = [];          // beschrijvingen van de lege ritten in het huidige overzicht
+let _legeModus = false;        // rijden we momenteel een lege rit?
+let _legeVolg = null;          // index van de dienstrit waar de lege rit naartoe leidt (of null)
+let _legeBezig = false;        // voorkomt dubbele overgang bij het einde van een lege rit
+let _enkelRef = null;          // referentie-afstand voor de voortgangsbalk bij een lege rit zonder route
+// Omloop-overzicht bij het starten: kop met dag/datum/stelplaats/omloop, en de ritten met de best
+// passende rit in het grijs. Alle ritten blijven staan, ook die uit het verleden.
+function toonOverzicht() {
+  stopGps(); clearInterval(window._rt); clearInterval(window._pt);
+  _ovzBest = kiesHuidigeRit();
+  const afk = OMLOOP.afk, snr = OMLOOP.key.split("-")[0] || "", oml = OMLOOP.key.split("-")[1] || OMLOOP.key;
+  const naam = OMLOOP.eigen ? (OMLOOP.naam || "Eigen net") : ((INDEX.find(e => e.afk === afk) || {}).naam || afk);
+  $("ovzkop").innerHTML = `<div class="ovz-dag">${esc(dagLabel(OMLOOP.dag))}</div>` +
+    (OMLOOP.eigen
+      ? `<div class="ovz-sp">${esc(naam)} · omloop ${esc(oml)}</div>`
+      : `<div class="ovz-sp">${esc(naam)} <span>(${esc(afk)} ${esc(snr)})</span> · omloop ${esc(oml)}</div>`) +
+    (OMLOOP.eigen
+      ? `<div class="ovz-bus"><label>Bus <input id="busnrIn" inputmode="numeric" placeholder="bv. 5059" value="${esc(OMLOOP.busnr || "")}"></label><label>Type <input id="busTypeIn" placeholder="bv. Jonckheere Transcity (optioneel)" value="${esc(OMLOOP.busType || "")}"></label></div>`
+      : "");
+  if (OMLOOP.eigen) {
+    const id = OMLOOP.afk.slice(6), bn = $("busnrIn"), bt = $("busTypeIn");
+    const bewaar = () => { OMLOOP.busnr = (bn && bn.value.trim()) || ""; OMLOOP.busType = (bt && bt.value.trim()) || ""; eigenBusBewaar(id, OMLOOP.busnr, OMLOOP.busType); };
+    if (bn) bn.oninput = bewaar;
+    if (bt) bt.oninput = bewaar;
+  }
+  const kept = OMLOOP.ritten.map((r, i) => ({ r, i })); // alle ritten tonen, ook die uit het verleden
+  _legeRitten = [];
+  let h = "";
+  kept.forEach(({ r, i }, k) => {
+    // Vóór de allereerste rit van de omloop: lege rit vanaf de stelplaats (aankomst = vertrek eerste rit).
+    if (k === 0 && i === 0) {
+      const li = _legeRitten.push({ soort: "start", volgende: i }) - 1;
+      h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${r[4] ? "–" + esc(r[4]) : ""}</span><span class="rl">ledig</span><span class="rp">stelplaats → ${esc(r[2])}</span></button>`;
+    }
+    const leeg = legeRitTussen(k > 0 ? kept[k - 1].r : null, r); // lege rit vóór deze rit?
+    if (leeg) {
+      const li = _legeRitten.push({ soort: "tussen", vorige: kept[k - 1].i, volgende: i }) - 1;
+      h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${(leeg.vert && leeg.aank) ? esc(leeg.vert) + "–" + esc(leeg.aank) : ""}</span><span class="rl">ledig</span><span class="rp">${esc(leeg.van)} → ${esc(leeg.naar)}</span></button>`;
+    }
+    h += `<button class="knop ovz-rit${i === _ovzBest ? " best" : ""}" data-riti="${i}">` +
+      `<span class="rn">${esc(r[4])}–${esc(r[5])}</span><span class="rl">${esc(r[1])}</span>` +
+      `<span class="rp">${esc(r[2])} → ${esc(r[3])}${r[7] ? " · " + esc(r[7].toFixed(1).replace(".", ",")) + " km" : ""}</span></button>`;
+    // Na de allerlaatste rit van de omloop: lege rit terug naar de stelplaats (vertrek = aankomst laatste rit).
+    if (k === kept.length - 1 && i === OMLOOP.ritten.length - 1) {
+      const li = _legeRitten.push({ soort: "eind", vorige: i }) - 1;
+      h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${r[5] ? esc(r[5]) + "–" : ""}</span><span class="rl">ledig</span><span class="rp">${esc(r[3])} → stelplaats</span></button>`;
+    }
+  });
+  $("ovzlijst").innerHTML = h || `<p class="hint">Geen ritten meer vandaag voor deze omloop.</p>`;
+  if (OMLOOP.eigen) $("ovzlijst").insertAdjacentHTML("beforeend", `<p class="hint">Eigen net. Tik op een rit voor de haltes, uren en de route op de kaart (met live gps-volgen).</p>`);
+  toon("overzicht");
+  setTimeout(() => { const b = $("ovzlijst").querySelector(".best"); if (b) b.scrollIntoView({ block: "center" }); }, 30);
+}
+// Welke rit is nu bezig of eerstvolgend?
+function kiesHuidigeRit() {
+  const rt = OMLOOP.ritten;
+  if (OMLOOP.dag > vandaagYmd()) return 0; // toekomstige dag: begin bij de eerste rit
+  const n = nuRit(); // houdt rekening met de nacht-frame van 'gisteren'
+  for (let i = 0; i < rt.length; i++) {
+    const v = _toMin(rt[i][4]), a = _toMin(rt[i][5]);
+    if (v != null && a != null && n >= v - 2 && n <= a + 2) return i; // nu bezig
+  }
+  for (let i = 0; i < rt.length; i++) { const v = _toMin(rt[i][4]); if (v != null && v >= n) return i; } // eerstvolgend
+  return rt.length - 1;
+}
+async function gaNaarRit(i, viaPauze) {
+  _legeModus = false; _legeBezig = false; // we stappen in een echte dienstrit, geen lege rit meer
+  RITI = Math.max(0, Math.min(OMLOOP.ritten.length - 1, i));
+  _omloopKlaar = false; _eindBezig = false; // einde-melding resetten voor de nieuwe rit
+  _rwVerberg();                               // oude routewaarschuwing wegnemen tot de nieuwe rit gecontroleerd is
+  const row = OMLOOP.ritten[RITI];
+  RIT = await bouwRit(row);
+  if (!RIT) {
+    alert(OMLOOP && OMLOOP.eigen
+      ? "Deze rit heeft nog geen route. Open het net in de net-bouwer en klik Bewaren, zodat de routes meegestuurd worden."
+      : "Deze rit kon niet opgebouwd worden (geen routegegevens gevonden).");
+    return;
+  }
+  controleerRoute(row);                       // op de achtergrond: strookt de route met de online omleidingsdata?
+  const v = _toMin(row[4]), n = nuRit();
+  // Meer dan 1,5 min voor vertrek: pauzescherm. Binnen 1,5 min starten we meteen (zie ook tikPauze).
+  if (viaPauze && v != null && (v - n) > 1.5) { toonPauze(); return; }
+  startRijden();
+}
+// Sequentiële overgang naar de volgende beladen rit (automatisch op het einde van een rit, of handmatig
+// door op de eindhalte te tikken). Zit er een lege (materiaal)rit tussen de huidige en de volgende rit,
+// dan rijden we die eerst actief; lukt het opbouwen niet (geen routegegevens), dan meteen de volgende rit.
+async function naVolgendeRit(vanIndex, naarIndex) {
+  const leeg = legeRitTussen(OMLOOP.ritten[vanIndex], OMLOOP.ritten[naarIndex]);
+  if (leeg && await startLegeRit({ soort: "tussen", vorige: vanIndex, volgende: naarIndex })) return;
+  gaNaarRit(naarIndex, true);
+}
+
+/* ===== pauzescherm ===== */
+function toonPauze() {
+  stopGps();
+  const row = OMLOOP.ritten[RITI];
+  // Lege rit vóór deze rit: vanaf de stelplaats bij de eerste rit, anders tussen twee ritten.
+  let leegTxt = "";
+  if (RITI === 0) leegTxt = `<div style="font-style:italic;opacity:.85;margin-bottom:6px">↳ eerst lege rit vanaf stelplaats naar ${esc(row[2])}</div>`;
+  // Een lege rit tussen twee beladen ritten wordt nu actief gereden vóór deze pauze, dus die melden we
+  // hier niet meer (enkel de lege rit vanaf de stelplaats bij de allereerste rit blijft staan).
+  $("pauzeVolg").innerHTML = leegTxt + `Volgende rit:<br><b>${esc(row[1])} — ${esc(row[3])}</b><br>vertrek ${esc(row[4])} · ${esc(row[2])}`;
+  toon("pauze");
+  tikPauze();
+  clearInterval(window._pt); window._pt = setInterval(tikPauze, 1000);
+}
+function tikPauze() {
+  const row = OMLOOP.ritten[RITI]; const v = _toMin(row[4]);
+  // We tellen 1,5 min (90 s) vroeger af: de rit start automatisch 1,5 min vóór het vertrekuur, dus de
+  // pauzeklok loopt op dat moment naar 0 (niet pas op het vertrekuur zelf).
+  const secLeft = (v - nu()) * 60 - 90;
+  $("pauzeKlok").textContent = secLeft > 0 ? klokHHMMSS(secLeft) : "00:00:00";
+  if (secLeft <= 0) { clearInterval(window._pt); startRijden(); }
+}
+
+/* ===== rijscherm ===== */
+const RIJZOOM = 17;    // vaste straatniveau-zoom waarop de kaart opent (hoger = dichterbij)
+let kaart = null, laag = null, marker = null, gedaanLaag = null;
+// Beginpositie van een pas geselecteerde rit: s op de eerste halte (rit start daar). De bol staat op je
+// echte GPS-locatie als die al bekend is, anders op de eerste halte tot er een fix is.
+function startSnap() {
+  if (RIT.enkelDoel) { // lege rit zonder route: alleen een doelhalte
+    const d = RIT.doel, sn = { enkelDoel: true, s: 0, lat: d[0], lon: d[1], hoek: 0, afstand: 0, afstandTot: null };
+    if (laatstePos) { sn.mLat = laatstePos[0]; sn.mLon = laatstePos[1]; sn.afstandTot = meter(laatstePos, d); }
+    return sn;
+  }
+  const geo = RIT.geo, pts = geo.pts, h0 = RIT.halten[0];
+  const s = geo.halteS[0] != null ? geo.halteS[0] : 0;
+  let hoek = 0; if (pts.length > 1) hoek = koers(pts[0], pts[1]);
+  const lat = h0 && h0.lat != null ? h0.lat : (pts[0] ? pts[0][0] : null);
+  const lon = h0 && h0.lon != null ? h0.lon : (pts[0] ? pts[0][1] : null);
+  const sn = { s, lat, lon, hoek, afstand: 0 };
+  if (laatstePos) { sn.mLat = laatstePos[0]; sn.mLon = laatstePos[1]; }
+  return sn;
+}
+function startRijden() {
+  clearInterval(window._pt);
+  _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0 };   // meting voor de ritscore resetten
+  toon("rij");
+  tekenLijst();
+  vulVolgStrip();
+  _scrollPauzeTot = 0;
+  // De oude kaart + lagen (marker, route, gereden deel) horen bij de vorige rit. Alles opnieuw opbouwen,
+  // anders blijft de live-bol aan de weggegooide kaart hangen en zie je hem niet meer na een ritwissel.
+  const kaartOpen = $("kaart").style.display === "block";
+  if (kaart) { try { kaart.remove(); } catch {} }
+  kaart = laag = marker = gedaanLaag = null;
+  // Een pas geselecteerde rit start bij de eerste halte. De bol toont je echte GPS-locatie zodra er
+  // een fix is; sta je nog ver van de route, dan blijft de schema-positie op halte 1 staan.
+  laatsteSnap = startSnap();
+  startGps();
+  startPosDelen();
+  render();
+  $("volgstrip").style.display = kaartOpen ? "none" : ""; // strip enkel in de haltelijst, niet op de kaart
+  if (kaartOpen) { maakKaart(); setTimeout(() => kaart && kaart.invalidateSize(), 60); if (laatsteSnap) zetMarker(); }
+  clearInterval(window._rt); window._rt = setInterval(render, 1000);
+}
+function tekenLijst() {
+  if (!RIT) { $("tl").innerHTML = `<li><span class="naam">Geen routegegevens voor deze rit.</span></li>`; return; }
+  $("tl").innerHTML = RIT.halten.map((h, i) =>
+    `<li data-i="${i}"><span class="t">${esc(h.tijd || "–")}</span><span class="naam">${esc(h.naam)}</span></li>`
+  ).join("");
+}
+// Onderaan: aankomst van déze rit (begin van je pauze) + vertrek/lijn/pauze van de volgende rit.
+function vulVolgStrip() {
+  const strip = $("volgstrip"); if (!strip) return;
+  if (!OMLOOP || !RIT) { strip.innerHTML = ""; return; }
+  if (_legeModus) {
+    // Tijdens de lege rit: 'ledig → bestemming', en eronder de volgende beladen rit die erop volgt.
+    let hl = `<div class="vs-rij"><span class="vs-n"><span class="vs-leegbadge">ledig</span> → ${esc(RIT.naar || "")}</span></div>`;
+    const vlg = (_legeVolg != null) ? OMLOOP.ritten[_legeVolg] : null;
+    if (vlg) {
+      const badge = `<span class="vs-lijnbadge" style="background:${lijnKleur(vlg[1])};color:${lijnTekst(vlg[1])}">${esc(vlg[1])}</span>`;
+      hl += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(vlg[4] || "--:--")}</span><span class="vs-n">${badge} ${esc(vlg[2] || "")}</span></div>`;
+    }
+    strip.innerHTML = hl; return;
+  }
+  const row = OMLOOP.ritten[RITI], vol = OMLOOP.ritten[RITI + 1];
+  // Regel 1: aankomsttijd + eindhalte van deze rit (zonder het woord 'aankomst').
+  let h = `<div class="vs-rij"><span class="vs-t">${esc(RIT.aankomst || row[5] || "--:--")}</span><span class="vs-n">${esc(RIT.naar || row[3] || "")}</span></div>`;
+  if (vol) {
+    const leeg = legeRitTussen(row, vol);
+    if (leeg) {
+      // De eerstvolgende is de lege rit (ledig → bestemming). De volgende beladen rit tonen we pas zodra
+      // je effectief op de lege rit rijdt (zie de _legeModus-tak hierboven).
+      h += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(leeg.vert || row[5] || "--:--")}</span><span class="vs-n"><span class="vs-leegbadge">ledig</span> → ${esc(leeg.naar || "")}</span></div>`;
+    } else {
+      const p = _toMin(vol[4]) - _toMin(row[5]);
+      // Buffer tussen deze en de volgende rit; vaste tekst (flex:none) zodat ze zichtbaar blijft.
+      const pt = (p != null && p >= 0 && p < 600) ? `<span class="vs-pauze">${p} min buffer</span>` : "";
+      const badge = `<span class="vs-lijnbadge" style="background:${lijnKleur(vol[1])};color:${lijnTekst(vol[1])}">${esc(vol[1])}</span>`;
+      h += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(vol[4] || "--:--")}</span><span class="vs-n">${badge} ${esc(vol[2] || "")}</span>${pt}</div>`;
+    }
+  } else {
+    h += `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Laatste rit van de omloop</span></div>`;
+  }
+  strip.innerHTML = h;
+}
+// Laat de haltelijst meeschuiven: de net-gepasseerde/huidige halte bovenaan, de komende haltes eronder.
+// Scrolt de chauffeur zelf, dan houden we 8 s op met automatisch schuiven (_scrollPauzeTot).
+let _scrollPauzeTot = 0;
+function schuifLijst(idx) {
+  if (Date.now() < _scrollPauzeTot) return;
+  const wrap = $("lijstwrap"), ul = $("tl");
+  const li = ul.children[Math.max(0, idx)];
+  if (!li) return;
+  // Flush bovenaan: zo staat de vorige (huidige) halte volledig boven de rand en zie je ze niet meer
+  // in de lijst (ze staat al in de #tp-balk).
+  const doel = Math.max(0, li.offsetTop);
+  if (Math.abs(wrap.scrollTop - doel) > 4) wrap.scrollTo({ top: doel, behavior: "smooth" });
+}
+["touchstart", "wheel", "pointerdown"].forEach(ev =>
+  $("lijstwrap").addEventListener(ev, () => { _scrollPauzeTot = Date.now() + 8000; }, { passive: true }));
+// Handmatig vertrekpunt: tik een halte om je positie daar te zetten (inpikken midden in een rit).
+// Zodra er een echte GPS-fix binnenkomt, neemt die het weer over.
+function kiesVertrekHalte(i) {
+  if (!RIT) return;
+  const h = RIT.halten[i]; if (!h || h.lat == null) return;
+  const sn = snap([h.lat, h.lon], RIT.geo);
+  sn.mLat = h.lat; sn.mLon = h.lon; // bol op de gekozen halte
+  laatsteSnap = sn;
+  render();
+  if ($("kaart").style.display !== "block") $("btnKaart").click();
+  else if (kaart && laatsteSnap) zetMarker();
+}
+function zetKop(klasse, afwTekst, afwSub) {
+  const k = $("kop"); k.className = klasse;
+  // Android: laat de statusbalk meelopen met de kopkleur (iOS doet dit via black-translucent).
+  const _tc = { groen: "#2e7d32", oranje: "#e8820c", blauw: "#1565c0", wit: "#ffffff" }[klasse];
+  const _mt = document.querySelector('meta[name="theme-color"]'); if (_mt && _tc) _mt.content = _tc;
+  // Geen vaste bijschriften meer (op tijd/afwijking/te vroeg/te laat); de kleur toont de toestand.
+  // afwSub enkel nog voor een échte melding zoals 'wacht op positie'.
+  $("afw").innerHTML = esc(afwTekst) + (afwSub ? `<small>${esc(afwSub)}</small>` : "");
+}
+// Snelheidsmeter links onderaan de kaart bijwerken: huidige snelheid + de max toegelaten snelheid.
+function maxLimietVoor() {
+  // De max-snelheid komt uit de vooraf (dagelijks) berekende limieten langs de route (RIT.limieten:
+  // oplopende [meter-langs-route, limiet]-paren). Zolang die data er niet is, tonen we geen limiet.
+  if (!RIT || !RIT.limieten || !RIT.limieten.length || !laatsteSnap) return null;
+  const s = laatsteSnap.s; let lim = null;
+  for (const paar of RIT.limieten) { if (paar[0] <= s) lim = paar[1]; else break; }
+  return lim;
+}
+function werkSnelmeterBij() {
+  const nu = $("snelNu"); if (!nu) return;
+  nu.textContent = (_snelheid != null) ? String(Math.round(_snelheid)) : "–";
+  const mx = $("snelMax"), b = mx && mx.querySelector("b"); if (!b) return;
+  const lim = maxLimietVoor();
+  // Waar de limiet onbekend is: het bord gewoon weglaten (niet tonen) i.p.v. een lege "–".
+  if (lim != null) { mx.style.display = ""; b.textContent = String(lim); }
+  else { mx.style.display = "none"; }
+}
+function render() {
+  if (!OMLOOP || !RIT) return;
+  werkSnelmeterBij();
+  const row = OMLOOP.ritten[RITI];
+  if (_legeModus) { $("blijn").textContent = "leeg"; $("blijn").style.background = "#667"; $("blijn").style.color = "#fff"; $("bintern").textContent = "↳"; $("bintern").style.display = ""; }
+  else { $("blijn").textContent = row[1]; $("blijn").style.background = lijnKleur(row[1]); $("blijn").style.color = lijnTekst(row[1]); $("bintern").style.display = "none"; }
+  $("brit").textContent = (!_legeModus && row && row[0]) ? row[0] : "";
+  if (RIT.enkelDoel) { renderEnkelDoel(); return; } // lege rit zonder route: enkel afstand tot de doelhalte
+  // positie bepalen
+  let s = null;
+  if (simAan) {
+    s = posOpTijd(nu() + simLead, RIT.halten, RIT.geo.halteS); // lead>0 => te vroeg
+    laatsteSnap = { s, lat: null, lon: null, hoek: 0 };
+  } else if (laatsteSnap) s = laatsteSnap.s;
+  const halten = RIT.halten, halteS = RIT.geo.halteS, totaal = RIT.geo.totaal;
+  // Focus-halte (fi): de halte waar je bent of naartoe rijdt. Ze blijft de huidige halte tot je er
+  // 20 m voorbij bent (GPS), zodat de weergave niet te snel naar de volgende springt. (halteS[i] > s−20
+  // = de halte ligt niet meer dan 20 m achter je.)
+  let fi = 0;
+  if (s != null) { fi = halten.length - 1; for (let i = 0; i < halten.length; i++) if (halteS[i] != null && halteS[i] > s - 20) { fi = i; break; } }
+  const focus = halten[fi];
+  // Ben je echt bij de focus-halte (±20 m voor of na)? Dan is ze 'nu' (groen) en telt de klok af.
+  const bijFocus = s != null && focus && halteS[fi] != null && Math.abs(halteS[fi] - s) <= 20;
+  $("tptijd").textContent = focus ? (focus.tijd || "--:--") : "--:--";
+  $("tpnaam").textContent = focus ? focus.naam : "–";
+  // afwijking
+  if (s == null) { zetKop("wit", "– gps –", "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; }
+  else {
+    const schema = schemaOp(s, halten, halteS);
+    const dev = nu() - schema; // >0 te laat, <0 te vroeg
+    // Meting voor de ritscore: elke tik route-trouw tellen, en bij elke nieuw bereikte halte de afwijking
+    // vastleggen (stiptheid per halte).
+    if (_ritStat && !_legeModus) {
+      _ritStat.tot++;
+      if (laatsteSnap && laatsteSnap.offRoute) _ritStat.off++;
+      if (fi > _ritStat.lastFi) { _ritStat.lastFi = fi; _ritStat.devs.push(dev); }
+    }
+    // Wit = binnen de aanvaardbare marge: minder dan 1 min te vroeg tot minder dan 5 min te laat.
+    // Meer dan 1 min te vroeg = oranje (rij trager), 5 min of meer te laat = blauw.
+    let klasse, tekst;
+    // Enkel vanaf een VOLLEDIGE minuut afwijking tonen we een getal (−1/−2/+1/+2…); daaronder niets.
+    // Geen bijschrift (op tijd/te vroeg/te laat) meer — de kleur van de kop toont de toestand.
+    const am = Math.floor(Math.abs(dev));
+    if (dev <= -1) klasse = "oranje"; else if (dev >= 5) klasse = "blauw"; else klasse = "wit";
+    if (am < 1) tekst = "";
+    else tekst = dev < 0 ? `−${am}` : `+${am}`;
+    zetKop(klasse, tekst);
+    // Aftelklok: telt af tot het vertrek van de focus-halte zolang je binnen 20 m ervan bent (voor én
+    // ná). Verder van de halte tonen we gewoon de klok (huidige tijd).
+    const secTot = (bijFocus && focus.min != null) ? (focus.min - nu()) * 60 : -1;
+    if (secTot > 0) { $("klokhand").style.display = ""; $("klokt").textContent = klokHHMMSS(secTot); }
+    else { $("klokhand").style.display = "none"; $("klokt").textContent = klokStr(); }
+    // Voortgangsbalk vult (grijs) het stuk van de vorige halte tot de focus-halte — indicatie hoe ver
+    // tot de volgende halte, niet over de hele rit.
+    const sPrev = (fi > 0 && halteS[fi - 1] != null) ? halteS[fi - 1] : (halteS[0] != null ? halteS[0] : 0);
+    const sNext = halteS[fi] != null ? halteS[fi] : totaal;
+    const bf = Math.max(0, Math.min(1, (s - sPrev) / ((sNext - sPrev) || 1)));
+    $("balkvul").style.width = (bf * 100) + "%";
+    $("balkpos").style.left = (bf * 100) + "%";
+    $("balk").classList.toggle("offroute", !!(laatsteSnap && laatsteSnap.offRoute)); // gearceerd bij afwijking van de route
+    // Haltelijst: de focus-halte staat bovenaan en is 'nu' (groen) zodra je er echt bij bent, anders
+    // 'volgend' (de halte waar je naartoe rijdt). Halten die je 20 m voorbij bent, zijn 'gehad'.
+    [...$("tl").children].forEach((li, i) => {
+      li.classList.toggle("gehad", i < fi);
+      li.classList.toggle("nu", i === fi && bijFocus);
+      li.classList.toggle("volgend", i === fi && !bijFocus);
+    });
+    // De huidige halte staat al bovenaan in de #tp-balk, dus de lijst begint net eronder bij de
+    // VOLGENDE halte (anders staat de huidige halte dubbel). Scrolt de chauffeur zelf, dan pauzeren
+    // we dat even (zie _scrollPauzeTot) zodat hij rustig kan terugkijken naar gepasseerde halten.
+    schuifLijst(Math.min(fi + 1, halten.length - 1));
+    // Einde rit → volgende rit. Je mag al 20 m vóór de eindhalte overspringen. Haal je de eindhalte
+    // niet (zwakke GPS of je stopt er net voor), dan springen we toch over zodra de geplande eindtijd
+    // ruim voorbij is (±2 min) en je in de buurt van het einde bent, en melden we dat ze niet bereikt werd.
+    const eindMin = halten[halten.length - 1].min;
+    const bijEind = s >= totaal - 20;
+    if (_legeModus) {
+      // Lege rit: zodra je binnen 20 m van de (eind)halte bent, over naar de volgende rit (of terug naar het overzicht).
+      if (bijEind && !_legeBezig) { _legeBezig = true; const v = _legeVolg; _legeModus = false; setTimeout(() => { if (v != null) gaNaarRit(v, true); else toonOverzicht(); }, 300); }
+    }
+    else if (bijEind && eindMin != null && nu() >= eindMin - 0.5) eindeRit(true);
+    else if (eindMin != null && nu() >= eindMin + 2 && s >= totaal - 400) eindeRit(false);
+    // kaart
+    if (kaart && laatsteSnap) zetMarker();
+    // navigatie-instructie
+    if (navAan) updateNavBanner(s);
+  }
+}
+// Lege rit zonder route (vanaf/naar de stelplaats): we kennen enkel de doelhalte. Toon de afstand ertoe,
+// laat de balk vullen naarmate je ze nadert, en schakel op 20 m over naar de volgende rit.
+function renderEnkelDoel() {
+  const d = (laatsteSnap && laatsteSnap.enkelDoel) ? laatsteSnap.afstandTot : null;
+  const doelH = RIT.halten[0];
+  $("tptijd").textContent = doelH.tijd || "--:--";
+  $("tpnaam").textContent = RIT.naar || doelH.naam;
+  $("klokt").textContent = klokStr(); $("klokhand").style.display = "none";
+  $("balk").classList.remove("offroute");
+  if (d == null) { zetKop("wit", "– gps –"); $("balkvul").style.width = "0%"; $("balkpos").style.left = "0%"; if (kaart && laatsteSnap) zetMarker(); return; }
+  if (_enkelRef == null || d > _enkelRef) _enkelRef = Math.max(d, 100); // referentie = verste afstand gezien
+  const bf = Math.max(0, Math.min(1, 1 - d / _enkelRef));
+  $("balkvul").style.width = (bf * 100) + "%"; $("balkpos").style.left = (bf * 100) + "%";
+  zetKop("wit", d >= 1000 ? (d / 1000).toFixed(1) + " km" : Math.round(d) + " m"); // afstand i.p.v. afwijking
+  [...$("tl").children].forEach((li, i) => { li.classList.toggle("nu", d <= 20); li.classList.toggle("volgend", d > 20); li.classList.remove("gehad"); });
+  if (kaart && laatsteSnap) zetMarker();
+  if (d <= 20 && !_legeBezig) { _legeBezig = true; const v = _legeVolg; _legeModus = false; setTimeout(() => { if (v != null) gaNaarRit(v, true); else toonOverzicht(); }, 300); }
+}
+// Korte melding onderaan het scherm (verdwijnt vanzelf).
+let _toastT = null;
+function toast(txt, ms = 4000) {
+  const t = $("toast"); if (!t) return;
+  t.textContent = txt; t.classList.add("aan");
+  clearTimeout(_toastT); _toastT = setTimeout(() => t.classList.remove("aan"), ms);
+}
+let _eindBezig = false, _omloopKlaar = false;
+// Einde van een rit: ga naar de volgende rit (na 3 s), of meld bij de laatste rit dat de omloop klaar is.
+// `bereikt` = of de eindhalte effectief gehaald werd; zo niet, tonen we dat kort.
+// --- Ritscore ---------------------------------------------------------------
+// Op het einde van een rit: één score (0–100) uit de stiptheid per halte en de route-trouw.
+// Volledig in de boordcomputer; niets wordt weggeschreven.
+function berekenScore(st) {
+  if (!st || st.devs.length < 2 || st.tot < 5) return null;   // te weinig data voor een eerlijke score
+  // Punten per halte op basis van de afwijking (minuten; <0 te vroeg, >0 te laat).
+  const puntVoor = (d) => {
+    if (d < -1) return Math.max(0, 100 - (-d - 1) * 35);      // te vroeg rijden weegt zwaar
+    if (d <= 3) return 100 - Math.max(0, d) * 3;              // op tijd tot licht te laat: bijna vol
+    return Math.max(0, 100 - 9 - (d - 3) * 12);               // vanaf +3 min sneller zakken
+  };
+  const stipt = st.devs.reduce((a, d) => a + puntVoor(d), 0) / st.devs.length;
+  const route = st.tot > 0 ? (100 * (st.tot - st.off) / st.tot) : 100;
+  const totaal = Math.round(stipt * 0.75 + route * 0.25);     // stiptheid is hoofdgewicht
+  const sterren = Math.max(1, Math.min(5, Math.round(totaal / 20)));
+  const teVroeg = st.devs.filter(d => d < -1).length;
+  const teLaat = st.devs.filter(d => d >= 5).length;
+  let fb;
+  if (route < 80) fb = "Je week vaak van de route af.";
+  else if (teVroeg > st.devs.length / 3) fb = "Vaak te vroeg — iets trager rijden.";
+  else if (teLaat > st.devs.length / 3) fb = "Vaak te laat — probeer bij te blijven.";
+  else if (totaal >= 90) fb = "Mooi op tijd gereden!";
+  else if (totaal >= 75) fb = "Nette rit.";
+  else fb = "Kan strakker op het schema.";
+  return { totaal, sterren, stipt: Math.round(stipt), route: Math.round(route), fb };
+}
+function toonRitscore(res, laatste) {
+  if (!res) return;
+  _rwVerberg();   // een eventuele routewaarschuwing van deze rit wegnemen
+  const kl = res.totaal >= 85 ? "goed" : res.totaal >= 70 ? "matig" : "zwak";
+  $("scoreTitel").textContent = laatste ? "Einde van de omloop" : "Rit voltooid";
+  $("scoreInhoud").innerHTML =
+    `<div class="score-groot ${kl}"><span class="sterren">${"★".repeat(res.sterren)}${"☆".repeat(5 - res.sterren)}</span>`
+    + `<span class="getal">${res.totaal}<small>/100</small></span></div>`
+    + `<div class="score-fb">${esc(res.fb)}</div>`
+    + `<div class="score-detail">Stiptheid ${res.stipt}% · Route ${res.route}%</div>`;
+  $("scoreov").classList.add("aan");
+  clearTimeout(window._scoreT); window._scoreT = setTimeout(() => $("scoreov").classList.remove("aan"), 12000);
+}
+function eindeRit(bereikt) {
+  if (_eindBezig || _omloopKlaar) return;
+  const laatste = RITI + 1 >= OMLOOP.ritten.length;
+  const res = (!_legeModus) ? berekenScore(_ritStat) : null;
+  if (laatste) {
+    _omloopKlaar = true;
+    if (res) toonRitscore(res, true);
+    else toast((bereikt ? "" : "Eindhalte niet bereikt — ") + "Einde van de omloop", 8000);
+    return;
+  }
+  _eindBezig = true;
+  if (res) toonRitscore(res, false);
+  else if (!bereikt) toast("Eindhalte niet bereikt — volgende rit", 4000);
+  // Na 3 s naar de volgende rit — via de eventuele lege rit ertussen (zie naVolgendeRit).
+  setTimeout(() => { _eindBezig = false; naVolgendeRit(RITI, RITI + 1); }, 3000);
+}
+
+/* ===== gps ===== */
+function startGps() {
+  if (simAan) return;
+  if (!navigator.geolocation) { return; }
+  stopGps();
+  watchId = navigator.geolocation.watchPosition(pos => {
+    if (!RIT) return;
+    const vorige = laatstePos;
+    laatstePos = [pos.coords.latitude, pos.coords.longitude];
+    // Snelheid: liefst rechtstreeks van de GPS (m/s), anders geschat uit de verplaatsing sinds de vorige fix.
+    // Licht afgevlakt zodat het cijfer niet springt.
+    let _kmu = null;
+    if (pos.coords.speed != null && !isNaN(pos.coords.speed) && pos.coords.speed >= 0) _kmu = pos.coords.speed * 3.6;
+    else if (vorige && _vorigeT) { const dt = (pos.timestamp - _vorigeT) / 1000; if (dt > 0.3 && dt < 30) _kmu = meter(vorige, laatstePos) / dt * 3.6; }
+    _vorigeT = pos.timestamp;
+    if (_kmu != null && _kmu < 160) _snelheid = (_snelheid == null) ? _kmu : _snelheid * 0.6 + _kmu * 0.4;
+    // Rijrichting bepalen (om de kaart te draaien, óók als je van de route afwijkt): uit de echte
+    // verplaatsing, en anders uit de kompasrichting van het toestel. Conventie: 0=noord, met de klok mee.
+    if (vorige && meter(vorige, laatstePos) > 5) { _bewHoek = koers(vorige, laatstePos); }
+    else if (pos.coords.heading != null && !isNaN(pos.coords.heading)) { _bewHoek = pos.coords.heading; }
+    if (RIT.enkelDoel) { // geen route: enkel de afstand tot de doelhalte, kegel wijst ernaartoe
+      const brg = koers(laatstePos, RIT.doel);
+      laatsteSnap = { enkelDoel: true, afstandTot: meter(laatstePos, RIT.doel), mLat: laatstePos[0], mLon: laatstePos[1], lat: RIT.doel[0], lon: RIT.doel[1], hoek: (_bewHoek != null ? _bewHoek : brg), s: 0 };
+      return;
+    }
+    const sn = snap(laatstePos, RIT.geo); // s/afwijking langs de route (gesnapt)
+    sn.mLat = laatstePos[0]; sn.mLon = laatstePos[1]; // de bol staat op je ECHTE locatie
+    // Sta je ver van de route (bv. omleiding of nog op weg ernaartoe), dan laten we de schema-positie
+    // staan waar ze stond i.p.v. ze te laten verspringen, maar we draaien de kaart wél optimaal mee met
+    // je echte rijrichting (_bewHoek) en markeren de toestand als 'off-route' (zodat de balk arceert).
+    if (sn.afstand > 150 && laatsteSnap) {
+      sn.s = laatsteSnap.s; sn.lat = laatsteSnap.lat; sn.lon = laatsteSnap.lon;
+      sn.hoek = (_bewHoek != null) ? _bewHoek : laatsteSnap.hoek;
+      sn.offRoute = true;
+    }
+    laatsteSnap = sn; // echte GPS heeft altijd voorrang op een handmatig gekozen halte
+  }, err => { /* geen fix: we tonen 'wacht op positie' */ }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 12000 });
+}
+function stopGps() { if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch {} watchId = null; } _snelheid = null; _vorigeT = 0; stopPosDelen(); }
+
+// Live positie delen (eigen net): tijdens het rijden sturen we de GPS-positie naar de server, zodat de
+// halteborden/kaart de bus live tonen. Zuinig: hoogstens één schrijfbeurt per 20 sec per bus, en enkel
+// als er een busnummer is ingevuld. Opslag gebeurt server-side in D1 (ruim schrijfbudget).
+let _posTimer = null, _posLaatst = 0;
+function startPosDelen() {
+  stopPosDelen();
+  if (!(OMLOOP && OMLOOP.eigen && OMLOOP.busnr)) return;
+  const stuur = () => {
+    if (!(OMLOOP && OMLOOP.eigen && OMLOOP.busnr) || !laatstePos) return;
+    const now = Date.now(); if (now - _posLaatst < 20000) return; _posLaatst = now;
+    const rij = RIT || {};
+    // Vertraging (min, + = te laat): geplande tijd op de huidige positie langs de route vs. de klok.
+    // Enkel als we netjes op de route zitten (niet off-route, geen lege-rit-zonder-route).
+    let vertraging = null;
+    try {
+      if (rij.geo && rij.halten && laatsteSnap && !laatsteSnap.enkelDoel && !laatsteSnap.offRoute && laatsteSnap.s != null) {
+        const sched = schemaOp(laatsteSnap.s, rij.halten, rij.geo.halteS);
+        if (sched != null) vertraging = Math.round(nuRit() - sched);
+      }
+    } catch {}
+    fetch("/api/eigenpos", {
+      method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
+      body: JSON.stringify({
+        actie: "post", net: OMLOOP.afk.slice(6), busnr: OMLOOP.busnr, type: OMLOOP.busType || "",
+        lat: laatstePos[0], lon: laatstePos[1], hoek: (laatsteSnap && laatsteSnap.hoek != null) ? laatsteSnap.hoek : null,
+        omloop: OMLOOP.key, rit: rij.rit || "", lijn: rij.d0 || "", bestemming: (rij.naar || ""), vertraging,
+      }),
+    }).catch(() => {});
+  };
+  _posTimer = setInterval(stuur, 10000);
+  setTimeout(stuur, 3000); // snelle eerste melding
+}
+function stopPosDelen() { if (_posTimer) { clearInterval(_posTimer); _posTimer = null; } }
+
+/* ===== kaart ===== */
+// Kaarttegels zijn veruit de grootste databron op mobiel. OpenStreetMap stuurt "cache-control: no-cache",
+// dus de browser bewaart de tegels niet. We bewaren ze zelf in de Cache API: elke tegel wordt per
+// telefoon max. één keer gedownload en daarna hergebruikt (ook over sessies/dagen heen). Een chauffeur
+// die dagelijks dezelfde routes rijdt, verbruikt zo na de eerste keer bijna geen data meer voor de kaart.
+// Bij een probleem (geen Cache API, offline, fout) valt elke tegel terug op gewoon rechtstreeks laden.
+function tegelLaag() {
+  const laag = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, crossOrigin: true, attribution: "© OpenStreetMap" });
+  laag.createTile = function (coords, done) {
+    const img = document.createElement("img"); img.alt = "";
+    const url = this.getTileUrl(coords);
+    const toon = (src, revoke) => {
+      img.onload = () => { if (revoke) URL.revokeObjectURL(src); done(null, img); };
+      img.onerror = () => done(new Error("tegel"), img);
+      img.src = src;
+    };
+    (async () => {
+      try {
+        if (typeof caches === "undefined") throw 0;
+        const c = await caches.open("lk-tegels-v1");
+        let resp = await c.match(url);
+        if (!resp) { resp = await fetch(url, { mode: "cors" }); if (resp && resp.ok) await c.put(url, resp.clone()); }
+        if (!resp || !resp.ok) throw 0;
+        toon(URL.createObjectURL(await resp.blob()), true);
+      } catch { img.crossOrigin = ""; toon(url, false); }
+    })();
+    return img;
+  };
+  return laag;
+}
+function maakKaart() {
+  if (kaart || !RIT || (!RIT.pts.length && !RIT.enkelDoel)) return;
+  const c0 = RIT.enkelDoel ? RIT.doel : [RIT.pts[0][0], RIT.pts[0][1]];
+  // touchRotate aan: in vrije modus mag de chauffeur de kaart zelf draaien (twee vingers).
+  kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0 }).setView(c0, 15);
+  tegelLaag().addTo(kaart);
+  // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
+  if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: ROUTEKLEUR, weight: 9, opacity: 1 }).addTo(kaart);
+  gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .75 }).addTo(kaart);
+  // Haltebolletjes wat groter (radius 11) en zonder vaste tekst op de kaart. De namen zitten in een
+  // aparte laag die enkel verschijnt als de 🏷️-knop aanstaat.
+  labelLaag = L.layerGroup();
+  for (const h of RIT.halten) if (h.lat != null) {
+    L.circleMarker([h.lat, h.lon], { radius: 11, color: ROUTEKLEUR, weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(kaart);
+    labelLaag.addLayer(L.tooltip({ permanent: true, direction: "bottom", offset: [0, 13], className: "halte-label", opacity: 1 }).setLatLng([h.lat, h.lon]).setContent(h.naam));
+  }
+  if (toonLabels) labelLaag.addTo(kaart);
+  // Vaste straatniveau-zoom tijdens het rijden, gecentreerd op je huidige positie. Bewust NIET via
+  // fitBounds: dat hing af van de containergrootte (bij het openen soms nog 0), waardoor de kaart
+  // uitgezoomd bleef. Een vaste zoom staat er meteen goed op, ook vóór de container zijn maat heeft.
+  const _c = (laatsteSnap && (laatsteSnap.mLat ?? laatsteSnap.lat) != null)
+    ? [laatsteSnap.mLat ?? laatsteSnap.lat, laatsteSnap.mLon ?? laatsteSnap.lon]
+    : c0;
+  kaart.setView(_c, RIJZOOM, { animate: false });
+  // Knoppen onder de zoomknoppen (+/-): volgmodus-switch en navigatie aan/uit.
+  volgKnop = mapKnop("topleft", "🎯", "Volgmodus aan/uit", el => {
+    volgModus = !volgModus;
+    el.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
+    el.title = volgModus ? "Volgmodus aan — tik om de kaart vrij te bewegen" : "Vrij bewegen — tik om weer te volgen";
+    if (!volgModus) { if (_volgAnim != null) cancelAnimationFrame(_volgAnim); _volgAnim = null; _volgNu = null; } // bij uitzetten: lus stoppen, bij heraanzetten vers beginnen
+    if (volgModus && laatsteSnap) zetMarker();
+  });
+  volgKnop.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
+  volgKnop.title = volgModus ? "Volgmodus aan — tik om de kaart vrij te bewegen" : "Vrij bewegen — tik om weer te volgen";
+  navKnop = mapKnop("topleft", "🧭", "Navigatie aan/uit", el => {
+    navAan = !navAan;
+    el.classList.toggle("aan", navAan);
+    if (!navAan) $("navbaan").classList.remove("aan");
+    else if (laatsteSnap) updateNavBanner(laatsteSnap.s);
+  });
+  navKnop.classList.toggle("aan", navAan);
+  if (!navAan) $("navbaan").classList.remove("aan");
+  // Haltenamen tonen/verbergen (het 'vakje' onder de zoomknoppen).
+  labelKnop = mapKnop("topleft", "🏷️", "Haltenamen tonen/verbergen", el => {
+    toonLabels = !toonLabels; el.classList.toggle("aan", toonLabels);
+    if (toonLabels) labelLaag.addTo(kaart); else if (labelLaag) kaart.removeLayer(labelLaag);
+  });
+  labelKnop.classList.toggle("aan", toonLabels);
+  window.__kaart = kaart;
+}
+let volgKnop = null, navKnop = null, labelKnop = null, labelLaag = null, toonLabels = false;
+// Maakt een Leaflet-knop in dezelfde stijl als de zoomknoppen en geeft het klikbare element terug.
+function mapKnop(positie, html, titel, onklik) {
+  const c = L.control({ position: positie });
+  let anker = null;
+  c.onAdd = function () {
+    const d = L.DomUtil.create("div", "leaflet-bar");
+    const a = L.DomUtil.create("a", "mapknop", d);
+    a.href = "#"; a.title = titel; a.innerHTML = html; anker = a;
+    L.DomEvent.on(a, "click", L.DomEvent.stop).on(a, "click", () => onklik(a));
+    return d;
+  };
+  c.addTo(kaart);
+  return anker;
+}
+// Hoekinterpolatie langs de kortste weg (−180..180), zodat de kaart nooit "de lange kant om" draait.
+function _hoekNaar(van, naar, t) { const d = ((naar - van + 540) % 360) - 180; return van + d * t; }
+// Vloeiende volgmodus: schuift en draait de kaart elke frame een stukje naar het doel (echte positie +
+// rijrichting) i.p.v. in één sprong per GPS-prik (±1×/sec). Dat haalt het schokkerige, stapsgewijze weg
+// en laat de kaart vloeiend met de weg meedraaien. Stopt vanzelf zodra het doel bereikt is.
+function startVolgAnim() {
+  if (_volgAnim != null) return;
+  const stap = () => {
+    _volgAnim = null;
+    if (!kaart || !volgModus || !_volgDoel || !_volgNu) return;
+    const a = 0.18; // easing per frame: zacht maar volgt vlot
+    _volgNu.lat += (_volgDoel.lat - _volgNu.lat) * a;
+    _volgNu.lon += (_volgDoel.lon - _volgNu.lon) * a;
+    _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, a);
+    const z = kaart.getZoom();
+    const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, z);
+    const vooruit = mpp * kaart.getSize().y * 0.3; // meter vooruit = ~30% van de schermhoogte (bus onderaan)
+    if (marker) marker.setLatLng([_volgNu.lat, _volgNu.lon]);
+    kaart.setView(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit), z, { animate: false });
+    if (kaart.setBearing) { try { kaart.setBearing(-_volgNu.hoek); } catch {} }
+    const dpos = Math.abs(_volgDoel.lat - _volgNu.lat) + Math.abs(_volgDoel.lon - _volgNu.lon);
+    const dh = Math.abs(((_volgDoel.hoek - _volgNu.hoek + 540) % 360) - 180);
+    if (dpos < 2e-6 && dh < 0.4) { _volgNu.lat = _volgDoel.lat; _volgNu.lon = _volgDoel.lon; _volgNu.hoek = _volgDoel.hoek; return; } // bereikt: stoppen
+    _volgAnim = requestAnimationFrame(stap);
+  };
+  _volgAnim = requestAnimationFrame(stap);
+}
+// Richting om de kaart te draaien: kijk vooruit langs de route tot aan de eerstvolgende scherpe
+// bocht (max VOORUITKIJK m). Op rechte stukken en flauwe bochten reikt de vooruitblik ver, zodat de
+// lijn vóór je recht (loodrecht) op het scherm blijft; bij een echte afslag (bv. rotonde, haakse
+// bocht) stopt de vooruitblik, zodat de kaart pas meedraait wanneer de bus de bocht effectief ingaat.
+function richtHoek(s0) {
+  const pA = puntOpS(s0);
+  if (!pA) return null;
+  const STAP = 6, DREMPEL = 18; // stap in meter; richtingsverschil tussen opeenvolgende stapjes (graden) = scherpe bocht
+  let vorig = pA, vorigeSeg = null, eind = pA;
+  for (let d = STAP; d <= VOORUITKIJK; d += STAP) {
+    const p = puntOpS(s0 + d);
+    if (!p || (p[0] === vorig[0] && p[1] === vorig[1])) break;  // einde route bereikt
+    const seg = koers(vorig, p);
+    if (vorigeSeg != null && Math.abs(((seg - vorigeSeg + 540) % 360) - 180) > DREMPEL) break; // bocht: hier stoppen
+    vorigeSeg = seg; eind = p; vorig = p;
+  }
+  if (eind[0] === pA[0] && eind[1] === pA[1]) return null;
+  return koers(pA, eind);
+}
+function zetMarker() {
+  if (!laatsteSnap) return;
+  // De bol staat op je echte locatie (mLat/mLon). Val terug op de gesnapte positie, dan op de positie langs s.
+  let lat = laatsteSnap.mLat, lon = laatsteSnap.mLon;
+  if (lat == null) { lat = laatsteSnap.lat; lon = laatsteSnap.lon; }
+  if (lat == null) { const pt = puntOpS(laatsteSnap.s); lat = pt[0]; lon = pt[1]; }
+  if (!marker) {
+    marker = L.marker([lat, lon], { zIndexOffset: 1000, icon: L.divIcon({ className: "boordmarker", iconSize: [60, 60], iconAnchor: [30, 30], html: `<div class="bm"><div class="richt"><svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div></div>` }) }).addTo(kaart);
+  } else if (!volgModus) marker.setLatLng([lat, lon]); // in volgmodus stuurt de animatielus de bol
+  // Richting om de kaart te draaien: vooruit langs de route tot de eerstvolgende scherpe bocht (richtHoek).
+  // Buiten de route of bij een enkel doel vallen we terug op de gewone (gesnapte of beweging-)richting.
+  let hoek = laatsteSnap.hoek || 0;
+  if (!RIT.enkelDoel && !laatsteSnap.offRoute && RIT.pts && RIT.pts.length > 1) {
+    const h = richtHoek(laatsteSnap.s || 0);
+    if (h != null) hoek = h;
+  }
+  // Navigatie-weergave: de kaart draait zodat de te rijden richting naar boven wijst, en de bus
+  // staat lager op het scherm (meer zicht op wat komt) — handig op een smartphone.
+  // De kaart draait mee, dus de kegel wijst op het scherm altijd recht naar boven.
+  // In volgmodus draait de kaart mee (rijrichting naar boven) en staat de bus lager op het scherm.
+  // In vrije modus laten we de kaart met rust zodat de chauffeur zelf kan schuiven en zoomen.
+  if (volgModus) {
+    const el = marker.getElement && marker.getElement();
+    if (el) { const w = el.querySelector(".bm"); if (w) w.style.setProperty("--h", "0deg"); } // kaart draait, kegel recht omhoog
+    // Doel voor de vloeiende volg-animatie: de echte positie + rijrichting. De animatielus schuift en
+    // draait de kaart daar geleidelijk naartoe (zie startVolgAnim), i.p.v. in één sprong per GPS-prik.
+    _volgDoel = { lat, lon, hoek };
+    if (!_volgNu) _volgNu = { lat, lon, hoek };
+    startVolgAnim();
+  } else {
+    // Vrije modus: de kaart draait niet automatisch mee, dus laat de kegel zelf de echte rijrichting wijzen.
+    const el = marker.getElement && marker.getElement();
+    if (el) { const w = el.querySelector(".bm"); if (w) w.style.setProperty("--h", (hoek || 0) + "deg"); }
+  }
+  if (RIT.enkelDoel) { if (gedaanLaag) gedaanLaag.setLatLngs([]); return; } // geen route om het gereden deel op te tekenen
+  // gereden deel grijs: volgt de route tot aan de gesnapte positie (niet je echte, mogelijk off-route, punt)
+  const sLat = laatsteSnap.lat != null ? laatsteSnap.lat : lat, sLon = laatsteSnap.lon != null ? laatsteSnap.lon : lon;
+  const done = []; for (let i = 0; i < RIT.pts.length; i++) { if (RIT.geo.cum[i] <= laatsteSnap.s) done.push(RIT.pts[i]); else break; }
+  done.push([sLat, sLon]); gedaanLaag.setLatLngs(done);
+}
+// Punt op `dist` meter vanuit (lat,lon) in kompasrichting `brg` (0=noord, 90=oost).
+function puntVanuit(lat, lon, brg, dist) {
+  const R = 6371000, br = brg * Math.PI / 180, dr = dist / R, la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
+  const la2 = Math.asin(Math.sin(la) * Math.cos(dr) + Math.cos(la) * Math.sin(dr) * Math.cos(br));
+  const lo2 = lo + Math.atan2(Math.sin(br) * Math.sin(dr) * Math.cos(la), Math.cos(dr) - Math.sin(la) * Math.sin(la2));
+  return [la2 * 180 / Math.PI, lo2 * 180 / Math.PI];
+}
+function puntOpS(s) {
+  const pts = RIT.pts, cum = RIT.geo.cum;
+  for (let i = 0; i < pts.length - 1; i++) if (cum[i + 1] >= s) { const f = (s - cum[i]) / ((cum[i + 1] - cum[i]) || 1); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f]; }
+  return pts[pts.length - 1];
+}
+
+/* ===== eenvoudige navigatie (uit de routelijn zelf) =====
+   Zoekt vanaf de huidige positie de eerstvolgende duidelijke bocht in de vormlijn en meldt de afstand
+   en de richting (links/rechts). Geen echte wegennavigatie: het volgt exact het buspad. */
+function navInstructie(s) {
+  if (s == null || !RIT || !RIT.pts || RIT.pts.length < 3) return null;
+  const pts = RIT.pts, cum = RIT.geo.cum, totaal = RIT.geo.totaal;
+  if (totaal - s < 40) return { einde: true };
+  const latm = 111320, lonm = 111320 * Math.cos(pts[0][0] * Math.PI / 180);
+  const xy = p => [p[1] * lonm, p[0] * latm];
+  // huidige segmentindex (het segment waarop we rijden)
+  let ci = 0; for (let i = 0; i < cum.length - 1; i++) { if (cum[i + 1] > s) { ci = i; break; } ci = i; }
+  for (let i = Math.max(1, ci + 1); i < pts.length - 1; i++) {
+    const a = xy(pts[i - 1]), b = xy(pts[i]), c = xy(pts[i + 1]);
+    const ix = b[0] - a[0], iy = b[1] - a[1], ox = c[0] - b[0], oy = c[1] - b[1];
+    const inl = Math.hypot(ix, iy), onl = Math.hypot(ox, oy);
+    if (inl < 4 || onl < 4) continue;
+    const dot = (ix * ox + iy * oy) / (inl * onl);
+    const cross = ix * oy - iy * ox;
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+    if (ang >= 32) {
+      const dist = Math.max(0, cum[i] - s);
+      if (dist > 900) break; // bocht te ver weg -> voorlopig rechtdoor
+      // Rotonde? Een rotonde is een strakke boog: meerdere opeenvolgende bochtjes in dezelfde
+      // draairichting, kleine straal, over een korte afstand (geen losse scherpe hoek). We kijken vanaf
+      // deze bocht vooruit of ze zo doorloopt en melden dan "rotonde" + de kant waar je ze weer verlaat
+      // (uit je inrij- vs. uitrij-koers). Het exacte afslagnummer kan niet zonder extra kaartdata.
+      const sign0 = cross > 0 ? 1 : -1;
+      const koersIn = Math.atan2(iy, ix) * 180 / Math.PI;
+      let som = 0, aantal = 0, laatste = i, koersUit = Math.atan2(oy, ox) * 180 / Math.PI;
+      for (let k = i; k < pts.length - 1; k++) {
+        const pa = xy(pts[k - 1]), pb = xy(pts[k]), pc = xy(pts[k + 1]);
+        const vx = pb[0] - pa[0], vy = pb[1] - pa[1], wx = pc[0] - pb[0], wy = pc[1] - pb[1];
+        const vnl = Math.hypot(vx, vy), wnl = Math.hypot(wx, wy);
+        if (wnl < 2) break;
+        const cr = vx * wy - vy * wx;
+        const a2 = Math.acos(Math.max(-1, Math.min(1, (vx * wx + vy * wy) / ((vnl || 1) * (wnl || 1))))) * 180 / Math.PI;
+        if (a2 >= 12 && (cr > 0 ? 1 : -1) !== sign0) break; // andere draairichting -> boog voorbij
+        if (a2 >= 12) { som += a2; aantal++; laatste = k; koersUit = Math.atan2(wy, wx) * 180 / Math.PI; }
+        if (cum[k] - cum[i] > 130) break; // te lang voor een rotonde
+      }
+      const boog = cum[laatste] - cum[i];
+      const straal = som > 0 ? boog / (som * Math.PI / 180) : 1e9;
+      if (aantal >= 2 && som >= 60 && boog <= 130 && straal <= 45) {
+        const netto = ((koersUit - koersIn + 540) % 360) - 180;
+        const kant = Math.abs(netto) < 30 ? "rechtdoor" : (netto > 0 ? "links" : "rechts");
+        return { rotonde: true, dist, kant };
+      }
+      return { dist, kant: cross > 0 ? "links" : "rechts", scherp: ang >= 100 };
+    }
+  }
+  return { rechtdoor: true };
+}
+function updateNavBanner(s) {
+  const baan = $("navbaan"), txt = $("navtxt"), pijl = $("navpijl");
+  const kaartZichtbaar = $("kaart").style.display === "block";
+  const instr = navInstructie(s);
+  // "Rechtdoor" tonen we niet meer: enkel de echte afslagen (en het einde van de rit) verschijnen.
+  if (!navAan || !kaartZichtbaar || !instr || instr.rechtdoor) { baan.classList.remove("aan"); return; }
+  if (instr.rotonde) {
+    pijl.textContent = "⟳";
+    const r = instr.kant === "rechtdoor" ? "rechtdoor" : "er af naar " + instr.kant;
+    const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
+    txt.textContent = d === 0 ? ("Rotonde, " + r) : `Over ${d} m rotonde, ${r}`;
+  } else if (instr.einde) { pijl.textContent = "🏁"; txt.textContent = "Einde rit"; }
+  else {
+    const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
+    pijl.textContent = instr.kant === "links" ? "←" : "→";
+    const richt = (instr.scherp ? "scherp naar " : "naar ") + instr.kant;
+    txt.textContent = d === 0 ? ("Nu " + richt) : `Over ${d} m ${richt}`;
+  }
+  baan.classList.add("aan");
+}
+
+/* ===== omleiding / routecheck ===== */
+const _omlYmd = s => { const d = String(s || "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(0, 8) : ""; };
+function omlActiefOp(o, dag) {
+  const van = _omlYmd(o.van), tot = _omlYmd(o.tot);
+  if (van && dag && van > dag) return false;
+  if (tot && dag && tot < dag) return false;
+  return true;
+}
+function fmtDat(ymd) { return ymd && ymd.length === 8 ? `${ymd.slice(6, 8)}/${ymd.slice(4, 6)}/${ymd.slice(0, 4)}` : ""; }
+/* ===== Routecontrole: strookt de geladen route met de online omleidingsdata? =====
+   De omleidingen-API deelt de betrokken haltes in "geraakt" (opRoute: staan op de normale lijn →
+   wellicht afgeschaft) en "vervang" (opRoute: false → tijdelijke extra halte). We vergelijken dat met
+   de haltes van de huidige rit:
+     - staat een geraakte (afgeschafte) halte nóg op de rit  → de route lijkt niet omgeleid;
+     - ontbreekt een vervanghalte terwijl de rit wél door de getroffen zone komt → idem.
+   Bij een mismatch tonen we een wegklikbare waarschuwing op elk scherm. Komt de rit niet door de
+   getroffen zone (geen enkele geraakte halte erop), dan controleren we de vervanghaltes niet, zodat
+   korte varianten die daar niet langskomen geen valse melding geven. */
+let _rwKey = null, _rwDicht = false;
+function _rwVerberg() { const el = $("routewaar"); if (el) el.classList.remove("aan"); }
+// Tijdsbewuste actiefcheck: houdt naast de datum ook rekening met het begin-/einduur van de omleiding
+// t.o.v. het vertrekuur van de rit. Een omleiding die vandaag om 19:00 eindigt, geldt niet meer voor een
+// rit die om 20:06 vertrekt (en een die pas later vandaag start, geldt nog niet voor een vroege rit).
+function omlActiefVoorRit(o, dag, ritMin) {
+  const ontleed = (s) => {
+    const t = String(s || ""); const d = t.replace(/\D/g, "").slice(0, 8);
+    if (d.length < 8) return null;
+    const m = t.match(/[T ](\d{2}):(\d{2})/);
+    return { d, min: m ? (+m[1] * 60 + +m[2]) : null };
+  };
+  const van = ontleed(o.van), tot = ontleed(o.tot);
+  if (van) { if (van.d > dag) return false; if (van.d === dag && van.min != null && ritMin != null && van.min > ritMin) return false; }
+  if (tot) { if (tot.d < dag) return false; if (tot.d === dag && tot.min != null && ritMin != null && tot.min < ritMin) return false; }
+  return true;
+}
+async function controleerRoute(row) {
+  if (!row || !RIT || !Array.isArray(RIT.halten) || !RIT.halten.length) { _rwVerberg(); return; }
+  if (OMLOOP && OMLOOP.eigen) { _rwVerberg(); return; }   // eigen netten: geen online omleidingsdata
+  const d0 = String(row[1] || "");
+  if (!/^\d{3,}$/.test(d0)) { _rwVerberg(); return; }
+  const key = `${OMLOOP ? OMLOOP.key : ""}|${RITI}`;
+  if (key !== _rwKey) { _rwKey = key; _rwDicht = false; }   // nieuwe rit → melding mag opnieuw verschijnen
+  const ent = d0[0], intern = d0.slice(1), dag = OMLOOP ? OMLOOP.dag : "";
+  const ritMin = _toMin(row[4]);   // vertrekuur van de rit (minuten), voor de tijdsbewuste actiefcheck
+  let data = null;
+  try {
+    const r = await fetch(`/api/omleidingen?entiteit=${encodeURIComponent(ent)}&lijn=${encodeURIComponent(intern)}`, { credentials: "same-origin" });
+    data = r.ok ? await r.json() : null;
+  } catch { return; }   // netwerkfout: geen melding forceren, laat een eventuele bestaande staan
+  if (key !== _rwKey) return;   // intussen van rit gewisseld
+  if (!data || !data.geclassificeerd) { _rwVerberg(); return; }   // zonder classificatie niet betrouwbaar te vergelijken
+  const actief = (data.omleidingen || []).filter(o => omlActiefVoorRit(o, dag, ritMin));
+  if (!actief.length) { _rwVerberg(); return; }
+  // Vergelijken op halte-ID, niet op naam: elke rijrichting heeft voor dezelfde halte een eigen ID
+  // (bv. "Gent Sint-Lievenspoort (Zuidpark)" = 201096 richting Oudenaarde, 200096 richting Gent).
+  // Zo houden we automatisch rekening met de rijrichting en verwarren we de twee richtingen niet.
+  const ritIds = new Set(RIT.halten.map(h => h.id).filter(Boolean).map(String));
+  if (!ritIds.size) { _rwVerberg(); return; }   // geen halte-ID's beschikbaar → niet betrouwbaar te vergelijken
+  const geraaktNog = new Set(), vervangWeg = new Set();
+  for (const o of actief) {
+    const haltes = o.haltes || [];
+    const nogBediend = haltes.filter(h => h.opRoute && h.nr != null && ritIds.has(String(h.nr)));
+    nogBediend.forEach(h => geraaktNog.add((h.naam || String(h.nr)).trim()));
+    if (nogBediend.length) {   // rit komt door de getroffen zone → vervanghaltes zijn relevant
+      haltes.filter(h => !h.opRoute && h.nr != null && !ritIds.has(String(h.nr))).forEach(h => vervangWeg.add((h.naam || String(h.nr)).trim()));
+    }
+  }
+  if (!geraaktNog.size && !vervangWeg.size) { _rwVerberg(); return; }
+  if (_rwDicht) return;   // gebruiker klikte de melding voor deze rit al weg
+  const lijn = lijnNr(d0);
+  let t = `<b>⚠️ Controleer de route van lijn ${esc(lijn)}.</b> Volgens de online omleidingsdata klopt deze rit mogelijk niet. `;
+  if (geraaktNog.size) {
+    const l = [...geraaktNog], m = l.length > 1;
+    t += `Halte${m ? "s" : ""} ${l.map(esc).join(", ")} word${m ? "en" : "t"} vandaag volgens De Lijn <b>niet bediend</b>, maar staa${m ? "n" : "t"} nog op je route. `;
+  }
+  if (vervangWeg.size) {
+    const l = [...vervangWeg], m = l.length > 1;
+    t += `Tijdelijke vervanghalte${m ? "s" : ""} ${l.map(esc).join(", ")} ontbreek${m ? "en" : "t"} op je route. `;
+  }
+  $("rwTekst").innerHTML = t.trim();
+  $("routewaar").classList.add("aan");
+}
+
+async function toonOmleiding() {
+  $("omlov").classList.add("aan");
+  const row = OMLOOP && OMLOOP.ritten[RITI];
+  const lijn = row ? lijnNr(row[1]) : "–";
+  $("omlTitel").textContent = `Omleiding — lijn ${lijn}`;
+  $("omlInhoud").innerHTML = `<p class="hint">Laden…</p>`;
+  const d0 = String(row ? row[1] : "");
+  if (!/^\d{3,}$/.test(d0)) { $("omlInhoud").innerHTML = `<p class="hint">Geen lijninfo voor deze rit.</p>`; return; }
+  const ent = d0[0], intern = d0.slice(1);
+  let oml = [], data = null;
+  try {
+    const r = await fetch(`/api/omleidingen?entiteit=${encodeURIComponent(ent)}&lijn=${encodeURIComponent(intern)}`, { credentials: "same-origin" });
+    data = r.ok ? await r.json() : null;
+    oml = (data && data.omleidingen) || [];
+  } catch { $("omlInhoud").innerHTML = `<p class="fout">Kon de omleidingen niet ophalen.</p>`; return; }
+  const dag = OMLOOP ? OMLOOP.dag : "";
+  const actief = oml.filter(o => omlActiefOp(o, dag));
+  const geclass = data && data.geclassificeerd;
+  // Dedupe haltes op naam (dezelfde halte komt vaak als heen- én terugrichting voor).
+  const haltesRij = (lijstje) => {
+    const zien = new Set(), uit = [];
+    for (const hh of lijstje) { const n = (hh.naam || hh.nr || "").trim(); if (!n || zien.has(n)) continue; zien.add(n); uit.push(n); }
+    return uit;
+  };
+  const halteBlok = (o) => {
+    const alle = o.haltes || [];
+    if (!alle.length) return "";
+    if (!geclass) {
+      const n = haltesRij(alle);
+      return n.length ? `<div class="omlhaltes betrokken"><span class="hl-lab">Betrokken haltes</span>${n.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>` : "";
+    }
+    const ger = haltesRij(alle.filter(h => h.opRoute));
+    const ver = haltesRij(alle.filter(h => !h.opRoute));
+    let b = "";
+    if (ger.length) b += `<div class="omlhaltes geraakt"><span class="hl-lab">⛔ Geraakte haltes <span class="hl-sub">(mogelijk afgeschaft)</span></span>${ger.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>`;
+    if (ver.length) b += `<div class="omlhaltes vervang"><span class="hl-lab">➕ Vervang-/tijdelijke haltes</span>${ver.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>`;
+    return b;
+  };
+  let h;
+  if (!actief.length) {
+    h = `<div class="omlstatus ok">✅ Route klopt — geen omleiding gemeld voor lijn ${esc(lijn)} op deze dag.</div>`;
+  } else {
+    h = `<div class="omlstatus waar">⚠️ Let op: ${actief.length} omleiding${actief.length > 1 ? "en" : ""} gemeld voor lijn ${esc(lijn)}. De route in de boordcomputer kan afwijken van wat je effectief rijdt.</div>`;
+    h += `<div class="omllijst">` + actief.map(o => {
+      const per = (o.van || o.tot) ? `<div class="per">${o.van ? "van " + fmtDat(_omlYmd(o.van)) : ""}${o.tot ? " t.e.m. " + fmtDat(_omlYmd(o.tot)) : ""}</div>` : "";
+      const red = o.reden ? `<div class="red">${esc(o.reden)}</div>` : "";
+      return `<div class="omlkaart"><b>${esc(o.titel || "Omleiding")}</b>${per}${red}${halteBlok(o)}</div>`;
+    }).join("") + `</div>`;
+  }
+  $("omlInhoud").innerHTML = h;
+}
+
+/* ===== ritmenu (slotje) ===== */
+function menuOpen(modus) {
+  if (modus === "tref") {
+    // Meerdere stelplaatsen met dit nummer: enkel de keuzelijst, geen menu-acties.
+    $("menuLijst").style.display = "";
+    $("menuActies").style.display = "none";
+  } else {
+    // Sleutel-menu: geen rittenlijst meer, maar grote actieknoppen (overzicht, thema, info, afsluiten).
+    $("menuTitel").textContent = `Omloop ${esc(OMLOOP.key.split("-")[1] || OMLOOP.key)}`;
+    $("menuLijst").innerHTML = ""; $("menuLijst").style.display = "none";
+    $("menuActies").style.display = "";
+  }
+  $("menu").classList.add("aan");
+}
+function menuSluit() { $("menu").classList.remove("aan"); }
+
+/* ===== knoppen ===== */
+// (De omloopzoeker van De Lijn is hier vervangen door de keuze uit de eigen netten, zie onderaan.)
+// Omloop-overzicht: tik een rit om er meteen te starten, of gebruik de Start-knop (best passende rit).
+$("ovzlijst").addEventListener("click", e => {
+  const l = e.target.closest("button[data-leeg]"); if (l) { startLegeRit(_legeRitten[+l.dataset.leeg]); return; }
+  const b = e.target.closest("button[data-riti]"); if (b) gaNaarRit(+b.dataset.riti, true);
+});
+$("ovzStart").onclick = () => gaNaarRit(_ovzBest, true);
+$("ovzTerug").onclick = () => { stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); };
+$("menu").addEventListener("click", e => {
+  const tr = e.target.closest("button[data-tref]"); if (tr) { startOmloop(_treffers[+tr.dataset.tref]); return; }
+  const ri = e.target.closest("button[data-riti]"); if (ri) { menuSluit(); gaNaarRit(+ri.dataset.riti, true); }
+});
+$("menuSluit").onclick = menuSluit;
+$("menuOverzicht").onclick = () => { menuSluit(); toonOverzicht(); };
+$("menuTerug").onclick = () => { menuSluit(); stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); };
+$("btnLijst").onclick = () => { $("lijstwrap").style.display = ""; $("kaart").style.display = "none"; $("volgstrip").style.display = ""; $("navbaan").classList.remove("aan"); $("snelmeter").classList.remove("aan"); $("btnLijst").setAttribute("aria-pressed", "true"); $("btnKaart").setAttribute("aria-pressed", "false"); };
+$("btnKaart").onclick = () => { $("lijstwrap").style.display = "none"; $("kaart").style.display = "block"; $("volgstrip").style.display = "none"; $("snelmeter").classList.add("aan"); $("btnLijst").setAttribute("aria-pressed", "false"); $("btnKaart").setAttribute("aria-pressed", "true"); maakKaart(); setTimeout(() => kaart && kaart.invalidateSize(), 60); if (laatsteSnap) { zetMarker(); if (navAan) updateNavBanner(laatsteSnap.s); } };
+$("tl").addEventListener("click", e => {
+  const li = e.target.closest("li[data-i]"); if (!li) return;
+  const i = +li.dataset.i;
+  // Tik op de laatste halte van een rit (leeg of beladen) → meteen over naar de volgende rit.
+  if (RIT && i === RIT.halten.length - 1) {
+    if (_legeModus) { const v = _legeVolg; _legeModus = false; _legeBezig = false; if (v != null) gaNaarRit(v, true); else toonOverzicht(); return; }
+    if (RITI + 1 < OMLOOP.ritten.length) { naVolgendeRit(RITI, RITI + 1); return; }
+    toast("Dit is de laatste rit van de omloop."); return;
+  }
+  kiesVertrekHalte(i);
+});
+$("btnMenu").onclick = () => menuOpen("rit");
+// --- Probleem/suggestie melden ---
+function meldScreenshot(file) {
+  return new Promise((res) => {
+    if (!file) { res(null); return; }
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280, sch = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * sch), h = Math.round(img.height * sch);
+        const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        try { res(cv.toDataURL("image/jpeg", 0.7)); } catch { res(null); }
+      };
+      img.onerror = () => res(null);
+      img.src = fr.result;
+    };
+    fr.onerror = () => res(null);
+    fr.readAsDataURL(file);
+  });
+}
+async function meldVerstuur() {
+  const tekst = $("meldTekst").value.trim();
+  const st = $("meldStatus");
+  if (!tekst) { st.style.color = "#c0392b"; st.textContent = "Schrijf eerst een beschrijving."; return; }
+  st.style.color = ""; st.textContent = "Bezig met verzenden…";
+  let shot = null;
+  try { shot = await meldScreenshot($("meldShot").files[0]); } catch {}
+  try {
+    const r = await fetch("/api/melden", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ soort: $("meldSoort").value, tekst, screenshot: shot, pagina: "boordcomputer " + location.pathname, ua: navigator.userAgent }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) { st.style.color = "#2d7d46"; st.textContent = "Bedankt! Je melding is verzonden."; $("meldTekst").value = ""; $("meldShot").value = ""; setTimeout(() => $("meldov").classList.remove("aan"), 1500); }
+    else { st.style.color = "#c0392b"; st.textContent = d.fout || "Verzenden mislukt."; }
+  } catch (e) { st.style.color = "#c0392b"; st.textContent = "Kon de server niet bereiken."; }
+}
+$("menuMelden").onclick = () => { menuSluit(); $("meldStatus").textContent = ""; $("meldov").classList.add("aan"); };
+$("meldSluit").onclick = () => $("meldov").classList.remove("aan");
+$("meldVerzend").onclick = meldVerstuur;
+$("btnOml").onclick = toonOmleiding;
+$("rwSluit").onclick = () => { _rwDicht = true; _rwVerberg(); };   // routewaarschuwing wegklikken (blijft weg voor deze rit)
+$("omlSluit").onclick = () => $("omlov").classList.remove("aan");
+$("scoreSluit").onclick = () => { clearTimeout(window._scoreT); $("scoreov").classList.remove("aan"); };
+$("omlov").addEventListener("click", e => { if (e.target === $("omlov")) $("omlov").classList.remove("aan"); });
+$("pauzeStart").onclick = () => startRijden();
+$("pauzeMenu").onclick = () => menuOpen("rit");
+
+/* ===== donkere modus ===== */
+let donker = false;
+try { donker = localStorage.getItem("lk-boord-thema") === "donker"; } catch {}
+function pasThemaToe() {
+  $("rij").classList.toggle("donker", donker);
+  document.body.classList.toggle("donker", donker); // ook de opstart-/pauze-/menuschermen
+  $("menuThema").textContent = donker ? "☀️ Lichte modus" : "🌙 Donkere modus";
+}
+$("menuThema").onclick = () => {
+  donker = !donker;
+  try { localStorage.setItem("lk-boord-thema", donker ? "donker" : "licht"); } catch {}
+  pasThemaToe();
+  menuSluit(); // sluit het menu zodat je het resultaat meteen ziet
+};
+pasThemaToe();
+
+/* ===== opstartscherm (logo + disclaimer/privacy) ===== */
+function toonIntro() { $("intro").classList.add("aan"); }
+$("introOk").onclick = () => { $("intro").classList.remove("aan"); try { sessionStorage.setItem("bp-intro", "1"); } catch {} };
+$("introHer").onclick = e => { e.preventDefault(); toonIntro(); };
+$("menuInfo").onclick = () => { menuSluit(); toonIntro(); };
+
+/* ===== PWA: installeerbaar + offline (service worker) ===== */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
+
+/* ===== "Zet op je startscherm"-knop =====
+   Android/Chrome: we vangen het install-event op en tonen een echte installatieknop.
+   iOS/Safari laat geen 1-tik-installatie toe (beperking van Apple), dus daar (en als fallback)
+   toont de knop de exacte stappen. De knop verdwijnt zodra de app al geïnstalleerd is. */
+let _instalEvent = null;
+function alGeinstalleerd() { try { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; } }
+function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+if (!alGeinstalleerd()) $("instalKnop").style.display = "";
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); _instalEvent = e; if (!alGeinstalleerd()) $("instalKnop").style.display = ""; });
+window.addEventListener("appinstalled", () => { $("instalKnop").style.display = "none"; });
+$("instalKnop").onclick = async () => {
+  if (_instalEvent) { // Android: echte systeemprompt
+    _instalEvent.prompt();
+    const keuze = await _instalEvent.userChoice.catch(() => ({}));
+    _instalEvent = null;
+    if (keuze && keuze.outcome === "accepted") $("instalKnop").style.display = "none";
+    return;
+  }
+  $("instalStappen").innerHTML = isIOS()
+    ? `<ol style="padding-left:20px;line-height:1.7;font-size:15px;margin:6px 0">
+         <li>Tik onderaan in Safari op het <b>deel-icoon</b> (vierkantje met een pijl omhoog).</li>
+         <li>Scrol en kies <b>"Zet op beginscherm"</b>.</li>
+         <li>Tik rechtsboven op <b>Voeg toe</b>.</li>
+       </ol>
+       <p class="hint">Je krijgt dan een Buspilot-icoon op je startscherm en opent de boordcomputer voortaan als app (ook offline).</p>`
+    : `<ol style="padding-left:20px;line-height:1.7;font-size:15px;margin:6px 0">
+         <li>Open het menu van je browser (⋮ of ⋯).</li>
+         <li>Kies <b>"App installeren"</b> of <b>"Toevoegen aan startscherm"</b>.</li>
+       </ol>
+       <p class="hint">Je opent Buspilot dan voortaan als app (ook offline).</p>`;
+  $("instalhulp").classList.add("aan");
+};
+$("instalSluit").onclick = () => $("instalhulp").classList.remove("aan");
+$("instalhulp").addEventListener("click", e => { if (e.target === $("instalhulp")) $("instalhulp").classList.remove("aan"); });
+
+/* ===== start (enkel eigen netten) ===== */
+let EIGEN_NETTEN = [];
+function eigVulDagen() {
+  const sel = $("omldag"); const nu = new Date(); const opts = [];
+  for (let i = -1; i < 7; i++) {
+    const d = new Date(nu.getFullYear(), nu.getMonth(), nu.getDate() + i);
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    opts.push(`<option value="${ymd}">${esc(dagLabel(ymd))}</option>`);
+  }
+  sel.innerHTML = opts.join(""); sel.value = vandaagYmd();
+}
+const _eigProj = {};
+async function eigVulOmlopen() {
+  const id = $("eignet").value, dag = $("omldag").value, sel = $("eigoml");
+  sel.innerHTML = ""; $("zoekfout").textContent = "";
+  if (!id) return;
+  try {
+    if (!_eigProj[id]) {
+      const r = await (await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "publiek-laad", id }) })).json();
+      if (!r.net) { $("zoekfout").textContent = r.fout || "Net niet gevonden."; return; }
+      _eigProj[id] = (r.net.projectie && r.net.projectie.omlopen) || {};
+    }
+    const wd = new Date(+dag.slice(0, 4), +dag.slice(4, 6) - 1, +dag.slice(6, 8)).getDay() || 7;
+    const oml = Object.keys(_eigProj[id]).filter(k => (_eigProj[id][k] || []).some(r => Array.isArray(r[6]) && r[6].includes(wd)))
+      .sort((a, b) => a.localeCompare(b, "nl", { numeric: true }));
+    sel.innerHTML = oml.length ? oml.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("") : `<option value="">Geen omlopen op deze dag</option>`;
+    try { const v = localStorage.getItem("eigoml/" + id); if (v && oml.includes(v)) sel.value = v; } catch {}
+  } catch { $("zoekfout").textContent = "Kon de omlopen niet laden."; }
+}
+$("eignet").onchange = () => { try { localStorage.setItem("eignet", $("eignet").value); } catch {} eigVulOmlopen(); };
+$("omldag").onchange = eigVulOmlopen;
+$("omlzoek").onclick = () => {
+  const id = $("eignet").value, k = $("eigoml").value;
+  if (!id || !k) { $("zoekfout").textContent = "Kies een net en een omloop."; return; }
+  try { localStorage.setItem("eigoml/" + id, k); } catch {}
+  startEigenOmloop(id, k, $("omldag").value);
+};
+(async function init() {
+  try {
+    const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.json()).catch(() => ({}));
+    if (me && me.nodig && !me.ingelogd) { $("gate").classList.add("aan"); return; }
+  } catch {}
+  eigVulDagen();
+  const p = new URLSearchParams(location.search);
+  try {
+    const r = await (await fetch("/api/net", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "publiek-lijst" }) })).json();
+    EIGEN_NETTEN = (r.nets || []).filter(n => n.heeftProjectie);
+    if (r.fout) $("zoekfout").textContent = r.fout;
+  } catch { $("zoekfout").textContent = "Kon de netten niet laden."; }
+  $("eignet").innerHTML = EIGEN_NETTEN.length ? EIGEN_NETTEN.map(n => `<option value="${esc(n.id)}">${esc(n.naam || "Eigen net")}</option>`).join("") : `<option value="">Nog geen netten met omlopen</option>`;
+  let gekozen = (p.get("eigen") || "").trim();
+  if (!gekozen) { try { gekozen = localStorage.getItem("eignet") || ""; } catch {} }
+  if (gekozen && EIGEN_NETTEN.some(n => n.id === gekozen)) $("eignet").value = gekozen;
+  const dag = (p.get("dag") || "").trim();
+  if (dag && [...$("omldag").options].some(o => o.value === dag)) $("omldag").value = dag;
+  await eigVulOmlopen();
+  // Diepe link: /boord/?eigen=<net>&omloop=<omloop>&dag=YYYYMMDD opent die omloop meteen.
+  const eigenId = (p.get("eigen") || "").trim(), o = (p.get("omloop") || "").trim();
+  if (eigenId && o) await startEigenOmloop(eigenId, o, dag);
+})();
+</script>
+</body>
+</html>

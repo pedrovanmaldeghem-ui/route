@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --accent:#1f5f8b; --good:#2d7d46; --bad:#c0392b; --rij:#f1f3f6; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; --accent:#6ab0e0; --rij:#23282e; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
+header { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+header h1 { font-size:18px; margin:0; flex:1 }
+header a, header button { font:600 13px system-ui; color:var(--accent); text-decoration:none; background:none; border:0; cursor:pointer; padding:4px 0 }
+.wrap { max-width:960px; margin:0 auto; padding:16px }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px }
+.rij { display:flex; gap:10px; flex-wrap:wrap; align-items:end }
+label { display:block; font-size:12px; color:var(--muted); margin-bottom:3px }
+select, input { padding:8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; min-width:160px }
+.muted { color:var(--muted) } .fout { color:var(--bad) }
+.knop { display:inline-block; font:600 13px system-ui; padding:6px 11px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; text-decoration:none }
+.knop.go { background:var(--good); border-color:var(--good); color:#fff }
+details.oml { border:1px solid var(--line); border-radius:8px; margin-top:8px; background:var(--panel) }
+details.oml > summary { padding:9px 12px; cursor:pointer; display:flex; gap:10px; align-items:center; flex-wrap:wrap; list-style:none }
+details.oml > summary::-webkit-details-marker { display:none }
+details.oml > summary b { min-width:90px }
+details.oml > summary .sub { color:var(--muted); flex:1; font-size:13px }
+.tw { overflow-x:auto }
+table { border-collapse:collapse; width:100%; font-size:14px }
+th, td { text-align:left; padding:6px 8px; border-top:1px solid var(--line); white-space:nowrap }
+th { font-size:11px; text-transform:uppercase; color:var(--muted) }
+td.n { font-variant-numeric:tabular-nums }
+tr.ritrij { cursor:pointer } tr.ritrij:hover td { background:var(--rij) }
+.lijn { display:inline-block; min-width:30px; text-align:center; font-weight:700; padding:1px 6px; border-radius:4px; background:var(--accent); color:#fff }
+ol.halten { margin:4px 0 8px; padding-left:20px; columns:2; column-gap:24px; white-space:normal } ol.halten li { break-inside:avoid }
+ol.halten .t { font-variant-numeric:tabular-nums; font-weight:600; margin-right:8px }
+#gate { text-align:center; padding:30px 16px }
+@media (max-width:600px) { ol.halten { columns:1 } select, input { min-width:0; width:100% } .rij > div { flex:1 1 140px } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Eigennet</h1>
+  <a href="/boord/" id="lBoord">▶ Boordcomputer</a>
+  <a href="/eigennet" id="lBouwer" hidden>Net-bouwer</a>
+  <a href="/admin">Beheer</a>
+  <span id="wie" class="muted" style="font-size:13px"></span>
+  <button id="uit" hidden>Uitloggen</button>
+</header>
+<div class="wrap">
+  <div id="gate" class="panel" hidden>
+    <h2 style="margin-top:0">Even inloggen</h2>
+    <p class="muted">Log in om de geplande omlopen van de eigen netten te zien.</p>
+    <a class="knop go" href="/login">Inloggen of account aanvragen</a>
+  </div>
+  <div id="inhoud" hidden>
+    <div class="panel">
+      <div class="rij">
+        <div><label for="net">Net</label><select id="net"></select></div>
+        <div><label for="dag">Dag</label><select id="dag"></select></div>
+        <div><label for="zoek">Zoek (omloop, lijn of rit)</label><input id="zoek" placeholder="bv. 3 of lijn 12"></div>
+      </div>
+      <p class="muted" id="netlinks" style="margin:10px 0 0"></p>
+    </div>
+    <p class="muted" id="meta"></p>
+    <div id="lijst"></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const post = async (url, body) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); let d = {}; try { d = await r.json(); } catch {} if (!r.ok && !d.fout) d.fout = "fout " + r.status; return d; };
+const opslaan = (k, v) => { try { localStorage.setItem("en/" + k, v); } catch {} };
+const lees = (k) => { try { return localStorage.getItem("en/" + k) || ""; } catch { return ""; } };
+const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+const DAGEN = ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"];
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? +m[1] * 60 + +m[2] : null; };
+const fmtMin = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const slCmp = (a, b) => a.localeCompare(b, "nl", { numeric: true });
+
+let NETTEN = [], PROJ = {};
+
+function vulDagen() {
+  const nu = new Date(), opts = [];
+  for (let i = -1; i < 14; i++) {
+    const d = new Date(nu.getFullYear(), nu.getMonth(), nu.getDate() + i);
+    opts.push(`<option value="${ymd(d)}">${DAGEN[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}${i === 0 ? " (vandaag)" : i === 1 ? " (morgen)" : ""}</option>`);
+  }
+  $("dag").innerHTML = opts.join(""); $("dag").value = ymd(nu);
+}
+
+async function laadProj(id) {
+  if (PROJ[id] !== undefined) return PROJ[id];
+  $("meta").textContent = "Laden…"; $("lijst").innerHTML = "";
+  const r = await post("/api/net", { actie: "publiek-laad", id });
+  PROJ[id] = r.net ? { naam: r.net.naam, publiek: !!r.net.publiekHaltebord, ...(r.net.projectie || {}) } : null;
+  if (!r.net) $("meta").textContent = r.fout || "Net niet gevonden.";
+  return PROJ[id];
+}
+
+async function toon() {
+  const id = $("net").value, dag = $("dag").value;
+  if (!id) { $("meta").textContent = "Nog geen netten met omlopen. Maak er een in de net-bouwer en klik Bewaren."; $("lijst").innerHTML = ""; $("netlinks").innerHTML = ""; return; }
+  const p = await laadProj(id);
+  if (!p) return;
+  $("netlinks").innerHTML = `<a class="knop" href="/eigenkaart?net=${encodeURIComponent(id)}">🗺️ Live kaart</a> <a class="knop" href="/haltebord?net=${encodeURIComponent(id)}">🚏 Halteborden met QR</a> <a class="knop" href="/eigennet?bekijk=${encodeURIComponent(id)}">📄 Dienstblad</a>` +
+    (p.publiek ? ` <span class="muted">Halteborden staan openbaar.</span>` : ` <span class="muted">Halteborden zijn enkel zichtbaar na inloggen.</span>`);
+  const wd = new Date(+dag.slice(0, 4), +dag.slice(4, 6) - 1, +dag.slice(6, 8)).getDay() || 7;
+  const q = $("zoek").value.trim().toLowerCase().replace(/^lijn\s+/, "");
+  const oml = p.omlopen || {};
+  let html = "", nO = 0, nR = 0;
+  for (const sl of Object.keys(oml).sort(slCmp)) {
+    let ritten = (oml[sl] || []).filter((r) => Array.isArray(r[6]) && r[6].includes(wd));
+    if (!ritten.length) continue;
+    if (q && !(sl.toLowerCase().includes(q) || ritten.some((r) => String(r[0]).toLowerCase() === q || String(r[1]).toLowerCase() === q))) continue;
+    ritten = ritten.slice().sort((a, b) => String(a[4]).localeCompare(String(b[4])));
+    nO++; nR += ritten.length;
+    const km = ritten.reduce((s, r) => s + (+r[7] || 0), 0);
+    const rij = (r) => `<tr class="ritrij" data-rk="${esc(r[8] || "")}" data-vert="${esc(r[4] || "")}" data-aank="${esc(r[5] || "")}"><td><span class="lijn">${esc(r[1] || "–")}</span></td><td class="n">${esc(r[0] || "–")}</td><td class="n">${esc(r[4] || "–")}</td><td>${esc(r[2] || "–")}</td><td>${esc(r[3] || "–")}</td><td class="n">${esc(r[5] || "–")}</td><td class="n">${r[7] ? esc((+r[7]).toFixed(1).replace(".", ",")) : "–"}</td></tr>`;
+    html += `<details class="oml"${q ? " open" : ""}><summary><b>${esc(sl)}</b><span class="sub">${ritten.length} ritten · ${esc(ritten[0][4] || "?")}–${esc(ritten[ritten.length - 1][5] || "?")} · ${km.toFixed(1).replace(".", ",")} km</span>` +
+      `<a class="knop go" href="/boord/?eigen=${encodeURIComponent(id)}&omloop=${encodeURIComponent(sl)}&dag=${encodeURIComponent(dag)}" onclick="event.stopPropagation()">▶ Boordcomputer</a></summary>` +
+      `<div class="tw"><table><tr><th>Lijn</th><th>Rit</th><th>Vertrek</th><th>Van</th><th>Naar</th><th>Aankomst</th><th>Km</th></tr>${ritten.map(rij).join("")}</table></div></details>`;
+  }
+  $("meta").textContent = nO ? `${p.naam || "Eigen net"}: ${nO} omlopen · ${nR} ritten op ${$("dag").selectedOptions[0].textContent}.` : `Geen omlopen op deze dag${q ? " voor deze zoekterm" : ""}.`;
+  $("lijst").innerHTML = html;
+}
+
+// Tik op een rit: de doorkomsturen per halte (uit de route die de net-bouwer meestuurt).
+$("lijst").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr.ritrij"); if (!tr) return;
+  const vol = tr.nextElementSibling;
+  if (vol && vol.classList.contains("ritdet")) { vol.remove(); return; }
+  const p = PROJ[$("net").value] || {}, rt = (p.routes || {})[tr.dataset.rk];
+  let inh;
+  if (!rt || !Array.isArray(rt.haltes) || !rt.haltes.length) inh = `<p class="muted">Geen haltes voor deze rit. Open het net in de net-bouwer en klik Bewaren.</p>`;
+  else {
+    let t = toMin(tr.dataset.vert) || 0;
+    const li = rt.haltes.map((h, i) => { const s = `<li><span class="t">${i === rt.haltes.length - 1 && tr.dataset.aank ? esc(tr.dataset.aank) : fmtMin(t)}</span>${esc(h[0])}</li>`; t += +h[3] || 0; return s; });
+    inh = `<ol class="halten">${li.join("")}</ol>`;
+  }
+  const r = document.createElement("tr"); r.className = "ritdet"; r.innerHTML = `<td colspan="7" style="white-space:normal">${inh}</td>`; tr.after(r);
+});
+
+$("net").onchange = () => { opslaan("net", $("net").value); toon(); };
+$("dag").onchange = toon;
+$("zoek").oninput = toon;
+$("uit").onclick = async () => { await post("/api/logout", {}); location.reload(); };
+
+(async () => {
+  const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
+  if (me.nodig && !me.ingelogd) { $("gate").hidden = false; $("lBoord").hidden = true; return; }
+  if (me.nodig) { $("wie").textContent = me.voornaam ? `Ingelogd als ${me.voornaam}` : ""; $("uit").hidden = false; }
+  if (me.rechten && me.rechten.bouwer) $("lBouwer").hidden = false;
+  $("inhoud").hidden = false;
+  vulDagen();
+  const r = await post("/api/net", { actie: "publiek-lijst" });
+  if (r.fout) { $("meta").textContent = r.fout; return; }
+  NETTEN = (r.nets || []).filter((n) => n.heeftProjectie);
+  $("net").innerHTML = NETTEN.length ? NETTEN.map((n) => `<option value="${esc(n.id)}">${esc(n.naam || "Eigen net")}${n.lijnnrs.length ? " · lijn " + n.lijnnrs.map(esc).join(", ") : ""}</option>`).join("") : `<option value="">(nog geen netten)</option>`;
+  const v = lees("net"); if (v && NETTEN.some((n) => n.id === v)) $("net").value = v;
+  toon();
+})();
+</script>
+</body>
+</html>
