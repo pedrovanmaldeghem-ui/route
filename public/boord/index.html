@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Boordcomputer · Eigennet</title>
+<title>Boordcomputer · Lijnkijker</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16.png">
 <link rel="manifest" href="manifest.json">
@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Buspilot">
 <link rel="apple-touch-icon" href="/img/bp-180.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H">
 <style>
 :root{
   --oranje:#e8820c; --blauw:#1565c0; --groen:#2e7d32; --rood:#c62828;
@@ -320,17 +320,34 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
     <p class="sub">Een hulp-boordcomputer voor chauffeurs. Geef je omloop in, de telefoon volgt je positie en toont je dienstblad, de route en of je voor of achter op schema rijdt.</p>
   </div>
   <button class="knop primair" id="instalKnop" style="width:100%;display:none">📲 Zet op je startscherm</button>
-  <div class="kaartje">
+  <div class="kaartje" id="eigKaart" hidden>
     <h2>Omloop kiezen</h2>
     <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:8px"><label for="eignet" style="min-width:56px">Net</label><select id="eignet" style="flex:1"></select></div>
-    <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:8px"><label for="omldag" style="min-width:56px">Dag</label><select id="omldag" style="flex:1"></select></div>
+    <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:8px"><label for="eigdag" style="min-width:56px">Dag</label><select id="eigdag" style="flex:1"></select></div>
     <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:10px"><label for="eigoml" style="min-width:56px">Omloop</label><select id="eigoml" style="flex:1"></select></div>
-    <button class="knop primair" id="omlzoek" style="width:100%">Omloop openen</button>
+    <button class="knop primair" id="eigOpen" style="width:100%">Omloop openen</button>
+  </div>
+  <div class="kaartje" id="delijnKaart">
+    <h2>Omloop ingeven</h2>
+    <div class="rij" style="gap:8px">
+      <label for="omldag">Dag</label><select id="omldag"></select>
+    </div>
+    <div class="rij" style="justify-content:space-between; margin:12px 4px 3px; font-size:12px; color:var(--muted)">
+      <span>stelplaatsnummer</span><span>omloop</span>
+    </div>
+    <div>
+      <input id="omlnr" inputmode="numeric" pattern="[0-9-]*" autocomplete="off" placeholder="000-0000" aria-label="Stelplaatsnummer - omloop">
+    </div>
+    <p class="hint" style="margin:8px 0 10px">Tik je <b>stelplaatsnummer − omloop</b> in, zoals <b>000-0000</b>. De streep komt er vanzelf bij na het 3de cijfer. Staat hetzelfde omloopnummer bij meerdere stelplaatsen, dan kies je die van jou uit een korte lijst.</p>
+    <button class="knop primair" id="omlzoek" style="width:100%">Omloop zoeken</button>
     <p id="zoekfout" class="fout" style="margin:8px 0 0"></p>
   </div>
-  <span id="dataversie" hidden></span><button id="ververs" hidden></button>
+  <div class="rij" id="versieRij" style="justify-content:space-between; align-items:center; margin:2px 2px 4px">
+    <span class="hint" id="dataversie">Laatste versie: –</span>
+    <button class="knop" id="ververs" style="padding:7px 12px">🔄 Vernieuwen</button>
+  </div>
   <p class="hint" style="text-align:center;margin:2px 2px 4px;font-size:12px">
-    Eigennet · zelf geplande netten ·
+    <span id="voettekst">Onafhankelijk project · niet verbonden aan De Lijn/TEC/MIVB · data: De Lijn open data</span> ·
     <a href="#" id="introHer" style="color:inherit">info &amp; disclaimer</a>
   </p>
 </section>
@@ -474,8 +491,8 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
     <br><br>
     <b>Privacy.</b> Je locatie wordt enkel op dit toestel gebruikt om je positie op de route te tonen. Ze wordt nergens bewaard of doorgestuurd.
     <br><br>
-    <b>Bron.</b> Dienstregeling: zelf geplande netten (net-bouwer). Kaart: © OpenStreetMap.
-    <div class="onaf">Onafhankelijk project — niet verbonden aan, noch goedgekeurd door een vervoermaatschappij.</div>
+    <b>Bron.</b> <span id="brontekst">Dienstregeling: De Lijn open data (Modellicentie Gratis Hergebruik).</span> Kaart: © OpenStreetMap.
+    <div class="onaf" id="onaftekst">Onafhankelijk project — niet verbonden aan, noch goedgekeurd door De Lijn, TEC of MIVB.</div>
   </div>
   <button class="start" id="introOk">Begrepen — start</button>
 </div>
@@ -484,14 +501,18 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
 <div id="gate">
   <div>
     <h2>Even inloggen</h2>
-    <p class="hint">Log eerst in om je omloop te openen.</p>
-    <a class="knop primair" href="/login?terug=/boord/">Naar inloggen</a>
+    <p class="hint" id="gateTekst">De boordcomputer hoort bij Lijnkijker. Log eerst in op de hoofdpagina.</p>
+    <a class="knop primair" id="gateLink" href="/vlaanderen/">Naar inloggen</a>
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+<!-- modus.js zet window.BOORD_MODUS: "delijn" (Lijnkijker) of "eigen" (Eigennet-site). Dit bestand is per site
+     verschillend; index.html zelf is op beide sites identiek (wordt automatisch gesynchroniseerd). -->
+<script src="modus.js"></script>
 <script>
+const EIGEN_MODUS = window.BOORD_MODUS === "eigen";
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -1992,7 +2013,22 @@ function menuOpen(modus) {
 function menuSluit() { $("menu").classList.remove("aan"); }
 
 /* ===== knoppen ===== */
-// (De omloopzoeker van De Lijn is hier vervangen door de keuze uit de eigen netten, zie onderaan.)
+$("omlzoek").onclick = zoekOpNummer;
+$("omlnr").addEventListener("keydown", e => { if (e.key === "Enter") zoekOpNummer(); });
+// Automatisch een "-" na het 3de cijfer van het stelplaatsnummer (vorm NNN-NNNN). Bij wissen blijft de
+// streep niet plakken, zodat je ook kan terugkeren naar een kaal nummer.
+let _omlPrev = "";
+$("omlnr").addEventListener("input", () => {
+  const el = $("omlnr"), wissen = el.value.length < _omlPrev.length;
+  const d = el.value.replace(/\D/g, "").slice(0, 7);
+  let v;
+  if (d.length > 3) v = d.slice(0, 3) + "-" + d.slice(3);
+  else if (d.length === 3 && !wissen) v = d + "-";   // streep komt erbij zodra het 3de cijfer is getikt
+  else v = d;
+  if (v !== el.value) { el.value = v; try { el.selectionStart = el.selectionEnd = v.length; } catch {} }
+  _omlPrev = v;
+});
+$("ververs").onclick = () => refreshData(false);
 // Omloop-overzicht: tik een rit om er meteen te starten, of gebruik de Start-knop (best passende rit).
 $("ovzlijst").addEventListener("click", e => {
   const l = e.target.closest("button[data-leeg]"); if (l) { startLegeRit(_legeRitten[+l.dataset.leeg]); return; }
@@ -2129,10 +2165,11 @@ $("instalKnop").onclick = async () => {
 $("instalSluit").onclick = () => $("instalhulp").classList.remove("aan");
 $("instalhulp").addEventListener("click", e => { if (e.target === $("instalhulp")) $("instalhulp").classList.remove("aan"); });
 
-/* ===== start (enkel eigen netten) ===== */
+/* ===== start: eigen modus (Eigennet-site) — kies net, dag en omloop uit de eigen netten ===== */
 let EIGEN_NETTEN = [];
+const _eigProj = {};
 function eigVulDagen() {
-  const sel = $("omldag"); const nu = new Date(); const opts = [];
+  const sel = $("eigdag"); const nu = new Date(); const opts = [];
   for (let i = -1; i < 7; i++) {
     const d = new Date(nu.getFullYear(), nu.getMonth(), nu.getDate() + i);
     const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
@@ -2140,9 +2177,8 @@ function eigVulDagen() {
   }
   sel.innerHTML = opts.join(""); sel.value = vandaagYmd();
 }
-const _eigProj = {};
 async function eigVulOmlopen() {
-  const id = $("eignet").value, dag = $("omldag").value, sel = $("eigoml");
+  const id = $("eignet").value, dag = $("eigdag").value, sel = $("eigoml");
   sel.innerHTML = ""; $("zoekfout").textContent = "";
   if (!id) return;
   try {
@@ -2158,15 +2194,23 @@ async function eigVulOmlopen() {
     try { const v = localStorage.getItem("eigoml/" + id); if (v && oml.includes(v)) sel.value = v; } catch {}
   } catch { $("zoekfout").textContent = "Kon de omlopen niet laden."; }
 }
-$("eignet").onchange = () => { try { localStorage.setItem("eignet", $("eignet").value); } catch {} eigVulOmlopen(); };
-$("omldag").onchange = eigVulOmlopen;
-$("omlzoek").onclick = () => {
-  const id = $("eignet").value, k = $("eigoml").value;
-  if (!id || !k) { $("zoekfout").textContent = "Kies een net en een omloop."; return; }
-  try { localStorage.setItem("eigoml/" + id, k); } catch {}
-  startEigenOmloop(id, k, $("omldag").value);
-};
-(async function init() {
+async function eigenInit() {
+  document.title = "Boordcomputer · Eigennet";
+  $("delijnKaart").hidden = true; $("versieRij").style.display = "none"; $("eigKaart").hidden = false;
+  $("eigKaart").appendChild($("zoekfout"));
+  $("voettekst").textContent = "Eigennet · zelf geplande netten";
+  $("brontekst").textContent = "Dienstregeling: zelf geplande netten (net-bouwer).";
+  $("onaftekst").textContent = "Onafhankelijk project — niet verbonden aan, noch goedgekeurd door een vervoermaatschappij.";
+  $("gateTekst").textContent = "Log eerst in om je omloop te openen.";
+  $("gateLink").href = "/login?terug=/boord/";
+  $("eignet").onchange = () => { try { localStorage.setItem("eignet", $("eignet").value); } catch {} eigVulOmlopen(); };
+  $("eigdag").onchange = eigVulOmlopen;
+  $("eigOpen").onclick = () => {
+    const id = $("eignet").value, k = $("eigoml").value;
+    if (!id || !k) { $("zoekfout").textContent = "Kies een net en een omloop."; return; }
+    try { localStorage.setItem("eigoml/" + id, k); } catch {}
+    startEigenOmloop(id, k, $("eigdag").value);
+  };
   try {
     const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.json()).catch(() => ({}));
     if (me && me.nodig && !me.ingelogd) { $("gate").classList.add("aan"); return; }
@@ -2183,11 +2227,50 @@ $("omlzoek").onclick = () => {
   if (!gekozen) { try { gekozen = localStorage.getItem("eignet") || ""; } catch {} }
   if (gekozen && EIGEN_NETTEN.some(n => n.id === gekozen)) $("eignet").value = gekozen;
   const dag = (p.get("dag") || "").trim();
-  if (dag && [...$("omldag").options].some(o => o.value === dag)) $("omldag").value = dag;
+  if (dag && [...$("eigdag").options].some(o => o.value === dag)) $("eigdag").value = dag;
   await eigVulOmlopen();
-  // Diepe link: /boord/?eigen=<net>&omloop=<omloop>&dag=YYYYMMDD opent die omloop meteen.
+  // Diepe link: ?eigen=<net>&omloop=<omloop>&dag=YYYYMMDD opent die omloop meteen.
   const eigenId = (p.get("eigen") || "").trim(), o = (p.get("omloop") || "").trim();
   if (eigenId && o) await startEigenOmloop(eigenId, o, dag);
+}
+
+/* ===== start ===== */
+(async function init() {
+  if (EIGEN_MODUS) { await eigenInit(); return; }
+  try {
+    const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.json()).catch(() => ({}));
+    if (me && me.nodig && !me.ingelogd) { $("gate").classList.add("aan"); }
+  } catch {}
+  // Eigen (zelf gepland) net: dit heeft de De Lijn-dienstregeling niet nodig, dus meteen afhandelen
+  // vóór basis()/refreshData (die kunnen traag of offline zijn).
+  try {
+    const eigenId = (new URLSearchParams(location.search).get("eigen") || "").trim();
+    if (eigenId) { const p = new URLSearchParams(location.search); await startEigenOmloop(eigenId, (p.get("omloop") || "").trim(), (p.get("dag") || "").trim()); return; }
+  } catch {}
+  try {
+    await basis();
+    // Weten of we de nieuwste dienstregeling hebben: haal de serverversie op en vergelijk met wat we
+    // volledig binnen hebben. Is de server nieuwer (of hebben we nog nooit bevestigd gedownload), dan
+    // halen we stil vers op zodat de eerste rit zeker juist staat.
+    SERVER_FEED = await serverFeed();
+    if (!LOADED_FEED || (SERVER_FEED && SERVER_FEED !== LOADED_FEED)) await refreshData(true);
+    vulDagen(); toonVersie();
+    // Diepe link vanuit de publieke site: /vlaanderen/boord/?omloop=214-6300&afk=XXX&dag=YYYYMMDD opent
+    // die omloop met één druk. We zetten (indien aanwezig) de juiste dag, vullen het omloopveld en
+    // zoeken meteen; met ?afk= wordt bij meerdere stelplaatsen meteen de juiste gestart.
+    try {
+      const p = new URLSearchParams(location.search);
+      const o = (p.get("omloop") || "").trim();
+      if (o) {
+        const dag = (p.get("dag") || "").trim();
+        if (dag && [...$("omldag").options].some(op => op.value === dag)) $("omldag").value = dag;
+        _autoAfk = (p.get("afk") || "").trim() || null;
+        $("omlnr").value = o;
+        zoekOpNummer();
+      }
+    } catch {}
+  }
+  catch (e) { $("zoekfout").textContent = "Kon de dienstregeling niet laden: " + e.message; }
 })();
 </script>
 </body>

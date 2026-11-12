@@ -1,10 +1,11 @@
 /* Buspilot service worker — maakt de boordcomputer installeerbaar en bruikbaar zonder signaal.
    De app-schil wordt bewaard (de netten zelf komen via /api en worden niet gecachet). Kaarttegels beheert de app zelf (eigen cache),
    dus die raken we hier niet aan. */
-const CACHE = "buspilot-eigen-v1";
+const CACHE = "buspilot-eigen-v2";
 const SCHIL = [
   "./",
   "manifest.json",
+  "modus.js",
   "/img/bp-180.png", "/img/bp-192.png", "/img/bp-512.png",
   "/img/favicon-32.png", "/img/favicon-16.png",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
