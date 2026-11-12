@@ -14,7 +14,7 @@ run_worker_first = true
 # (Storage & Databases -> KV -> Create, naam "eigennet") en plak de id hieronder.
 [[kv_namespaces]]
 binding = "EIGENNET"
-id = "VUL_HIER_DE_KV_ID_IN"
+id = "0831afc7d2414ddab3bbef451f02d10f"
 
 # D1: de laatst gemelde positie van elke bus (tabel eigenpos, wordt vanzelf aangemaakt).
 # Maak een database "eigennet" aan (Storage & Databases -> D1 -> Create) en plak de id hieronder.
