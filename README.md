@@ -44,3 +44,10 @@ npm install
 printf 'AUTH_SECRET=test\nADMIN_WACHTWOORD=beheer\nGEO_OPEN=1\n' > .dev.vars
 npx wrangler dev
 ```
+
+## Boordcomputer: gedeeld met Lijnkijker
+
+`public/boord/index.html` is hetzelfde bestand als `public/delijn/boord/index.html` in Lijnkijker. Een
+workflow in Lijnkijker (`boord-sync.yml`) kopieert elke wijziging op `main` automatisch hierheen.
+Pas de boordcomputer dus in Lijnkijker aan, niet hier. Het verschil tussen de twee sites zit enkel in
+`public/boord/modus.js` (hier `"eigen"`) en `sw.js`, die niet gekopieerd worden.
