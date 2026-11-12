@@ -391,6 +391,10 @@ function keerRouteOm(hs) {
   r.forEach((h, k) => { h.vorm = nieuweVorm[k]; });
   return r;
 }
+// Terugroute afleiden uit de heenroute: haltes én de weg-geometrie (vorm) per segment correct omgekeerd.
+// Werkt op een diepe kopie zodat de heenroute zelf ongemoeid blijft. Gebruik dit overal waar een terug-
+// richting uit de heenroute wordt afgeleid, zodat de terugweg nooit dwars snijdt maar dezelfde straten volgt.
+function terugVanHeen(heen) { return keerRouteOm((heen || []).map((h) => ({ ...h, vorm: (h.vorm || []).map((v) => ({ lat: v.lat, lon: v.lon })) }))); }
 
 // --- Simulatie: elke omloop als een reeks "legs" (uitrit, ritten, inrit) met start/eind-minuut en
 // het getekende pad, zodat we op elk tijdstip de buspositie kunnen interpoleren. --------------------
@@ -811,9 +815,10 @@ function bouwRouteUitPunten(stops, track, bron) {
   tekenKaart(); tekenHalteTabel();
   const alle = hs.flatMap((h) => [[h.lat, h.lon], ...(h.vorm || []).map((v) => [v.lat, v.lon])]);
   if (alle.length) kaart.fitBounds(alle, { padding: [30, 30] });
-  // Meteen op de echte wegen leggen (geen knop drukken). Een rare omweg wordt automatisch geweigerd,
-  // zodat de geïmporteerde lijn behouden blijft waar de router er een lusje van zou maken.
-  if ($("autoweg") && $("autoweg").checked && hs.length >= 2) volgDeWeg(true);
+  // Bracht de import al een echte lijn mee (track), dan volgt die de wegen al — die houden we exact zo.
+  // Opnieuw door de router halen (die de lijn tot ~23 tussenpunten herleidt, voetgangersprofiel) zou de
+  // lijn net van de straat trekken. Enkel bij een import ZONDER lijn (losse haltes) leggen we ze op de weg.
+  if (!track.length && $("autoweg") && $("autoweg").checked && hs.length >= 2) volgDeWeg(true);
 }
 // --- KML / KMZ import (bv. een route getekend in Google My Maps) -------------
 // KML-coördinaten zijn "lon,lat[,hoogte]" gescheiden door witruimte (lon staat dus vóór lat).
@@ -906,7 +911,7 @@ async function volgDeWeg(behoudHaltes) {
     // een forse omweg van (bv. een lusje door de voetpaden aan een station), dan houden we jóuw lijn.
     const lenVan = (pts) => { let s = 0; for (let k = 1; k < pts.length; k++) s += afstandMeter({ lat: pts[k - 1][1], lon: pts[k - 1][0] }, { lat: pts[k][1], lon: pts[k][0] }); return s; };
     const corridor = lenVan(punten), snapLen = lenVan(geo);
-    if (snapLen - corridor > 150 && snapLen > corridor * 1.5) { omgereden++; continue; } // rare omweg: getekende vorm behouden
+    if (via.length && snapLen - corridor > 150 && snapLen > corridor * 1.5) { omgereden++; continue; } // rare omweg enkel weigeren bij een zelf getekende corridor; een rechte verbinding tussen twee haltes altijd langs de weg leggen (niet dwars door een park/veld)
     hs[i].vorm = decimeer(geo.slice(1, -1), 250).map((c) => ({ lat: c[1], lon: c[0] })); // enkel de tussenpunten
     gedaan++;
   }
@@ -993,7 +998,7 @@ function lijnRitten(l, li) {
   const freq = Math.max(1, Math.min(120, Math.round(l.frequentie || 20)));
   const keer = Math.max(0, Math.min(120, Math.round(l.keertijd || 0)));
   const beide = l.richtingen !== "heen";
-  const heen = l.heen, terug = (l.terug && l.terug.length >= 2) ? l.terug : l.heen.slice().reverse();
+  const heen = l.heen, terug = (l.terug && l.terug.length >= 2) ? l.terug : terugVanHeen(l.heen);
   if (heen.length < 2) throw new Error(`Lijn ${l.lijn || "?"}: teken een heenroute van minstens twee haltes.`);
   if (hVan == null || hTot == null || hTot < hVan) throw new Error(`Lijn ${l.lijn || "?"}: controleer het heen-tijdsvenster.`);
   if (beide && (tVan == null || tTot == null || tTot < tVan)) throw new Error(`Lijn ${l.lijn || "?"}: controleer het terug-tijdsvenster.`);
@@ -1098,7 +1103,7 @@ function genereerNet() {
 }
 // De haltereeks van een lijn in de gevraagde richting (terug = aparte route, of omgekeerde heen).
 function richtingHaltes(l, richting) {
-  const terug = (l.terug && l.terug.length >= 2) ? l.terug : l.heen.slice().reverse();
+  const terug = (l.terug && l.terug.length >= 2) ? l.terug : terugVanHeen(l.heen);
   return richting === "terug" ? terug : l.heen;
 }
 // Afstand (km) langs de (eventueel vervormde) route.
@@ -1363,7 +1368,7 @@ $("modHalte").onclick = () => { modus = "halte"; zetModusKnoppen(); tekenKaart()
 $("modVorm").onclick = () => { modus = "vorm"; zetModusKnoppen(); tekenKaart(); };
 $("modStel").onclick = () => { modus = "stelplaats"; zetModusKnoppen(); tekenKaart(); };
 $("modSleep").onclick = () => { modus = "sleep"; zetModusKnoppen(); $("fout").textContent = "Sleep op de kaart om de hele route te verplaatsen."; setTimeout(() => { if ($("fout").textContent.startsWith("Sleep op de kaart")) $("fout").textContent = ""; }, 3500); };
-$("spiegel").onclick = () => { const l = L0(); if (l.heen.length < 2) { alert("Teken eerst de heenroute."); return; } snap(); l.terug = l.heen.slice().reverse().map((h) => ({ ...h, vorm: (h.vorm || []).map((v) => ({ lat: v.lat, lon: v.lon })) })); herberekenHaltes(l.terug); route = "terug"; zetRouteKnoppen(); tekenKaart(); tekenHalteTabel(); planBewaar(); };
+$("spiegel").onclick = () => { const l = L0(); if (l.heen.length < 2) { alert("Teken eerst de heenroute."); return; } snap(); l.terug = terugVanHeen(l.heen); herberekenHaltes(l.terug); route = "terug"; zetRouteKnoppen(); tekenKaart(); tekenHalteTabel(); planBewaar(); };
 $("gpx").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
   $("fout").textContent = "";
