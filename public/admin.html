@@ -47,6 +47,13 @@ a { color:var(--badge) }
     <button class="go" id="importeer" style="margin-top:8px">Netten overnemen</button>
     <div id="impinfo" class="muted"></div>
   </div>
+  <div class="blok">
+    <h2>Netten inladen uit back-upbestanden</h2>
+    <p class="muted">Kies de <code>.raw.json</code>-bestanden van de export (één per net). Ze worden ongewijzigd bewaard. Het vinkje "overschrijven" hierboven geldt ook hier.</p>
+    <input type="file" id="bestanden" accept=".json,application/json" multiple>
+    <button class="go" id="laadin" style="margin-top:8px">Inladen</button>
+    <div id="laadinfo" class="muted"></div>
+  </div>
 </div>
 </div>
 <script>
@@ -84,6 +91,17 @@ $("open").onclick = async () => {
   try { await laad(); $("aanmeld").hidden = true; $("paneel").hidden = false; } catch (e) { $("fout").textContent = e.message; }
 };
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("open").click(); });
+$("laadin").onclick = async () => {
+  const fs = [...($("bestanden").files || [])];
+  if (!fs.length) { $("laadinfo").textContent = "Kies eerst een of meer bestanden."; return; }
+  $("laadinfo").textContent = "Bezig…";
+  try {
+    const nets = [];
+    for (const f of fs) { try { nets.push(JSON.parse(await f.text())); } catch { $("laadinfo").textContent = `${f.name} is geen geldig JSON-bestand.`; return; } }
+    const r = await api({ actie: "importeer-json", nets, overschrijf: $("overschrijf").checked });
+    $("laadinfo").innerHTML = (r.nets || []).map((x) => `${esc(x.naam || x.id)}: ${esc(x.status)}`).join("<br>");
+  } catch (e) { $("laadinfo").textContent = e.message; }
+};
 $("importeer").onclick = async () => {
   $("impinfo").textContent = "Bezig…";
   try {

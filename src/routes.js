@@ -109,6 +109,21 @@ async function authAdmin(req, env, c) {
   // Eenmalige verhuis: alle netten overnemen van een andere site (de oude Lijnkijker). De server haalt ze
   // daar op via /api/net (lijst + laad) en bewaart ze hier ongewijzigd. Bestaande netten met hetzelfde id
   // worden enkel overschreven als 'overschrijf' aan staat.
+  // Netten uit back-upbestanden (de .raw.json-export van Lijnkijker: { net: {...} } of rechtstreeks het net).
+  if (actie === "importeer-json") {
+    const lijst = Array.isArray(b.nets) ? b.nets.slice(0, 50) : [];
+    const uit = [];
+    for (const ruw of lijst) {
+      const n = ruw && typeof ruw === "object" && ruw.net && typeof ruw.net === "object" ? ruw.net : ruw;
+      const id = netId(n && n.id);
+      if (!id || !Array.isArray(n.lijnen)) { uit.push({ id: id || "?", naam: (n && n.naam) || "", status: "geen geldig net" }); continue; }
+      if (!b.overschrijf && (await c.st.get(`net/${id}`))) { uit.push({ id, naam: n.naam, status: "bestond al" }); continue; }
+      if (JSON.stringify(n).length > 20 * 1024 * 1024) { uit.push({ id, naam: n.naam, status: "te groot" }); continue; }
+      await c.st.setJSON(`net/${id}`, n); // ongewijzigd bewaren, net als bij de overname van de oude site
+      uit.push({ id, naam: n.naam, status: "overgenomen" });
+    }
+    return json({ ok: true, nets: uit });
+  }
   if (actie === "importeer") {
     let bron;
     try { bron = new URL(String(b.bron || "")); } catch { return json({ fout: "Geef het volledige adres van de oude site, bv. https://lijnkijker.….workers.dev" }, 400); }
