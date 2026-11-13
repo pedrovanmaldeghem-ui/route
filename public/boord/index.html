@@ -670,6 +670,7 @@ function naarCorrectie(row) {
 // waar de volgende vertrekt (een ander perron op dezelfde halte telt niet mee), dan rijdt de bus daar
 // leeg tussen. Geeft {van, naar, vert, aank} of null.
 function legeRitTussen(vorige, volgende) {
+  if (OMLOOP && OMLOOP.vrij) return null; // vrije rit / pendel: geen lege ritten
   if (!vorige || !volgende || !vorige[3] || !volgende[2]) return null;
   if (zelfdePlaats(vorige[3], volgende[2])) return null;
   // Zelfde plek op de kaart? Vergelijk de échte laatste halte (laatste doorkomst) van de vorige rit met
@@ -1198,7 +1199,7 @@ async function gaNaarRit(i, viaPauze) {
   if (OMLOOP.eigen && !RIT.limieten) osmLimietenVoor(RIT); // max-snelheden uit OpenStreetMap (op de achtergrond)
   const v = _toMin(row[4]), n = nuRit();
   // Meer dan 1,5 min voor vertrek: pauzescherm. Binnen 1,5 min starten we meteen (zie ook tikPauze).
-  if (viaPauze && v != null && (v - n) > 1.5) { toonPauze(); return; }
+  if (viaPauze && !OMLOOP.vrij && v != null && (v - n) > 1.5) { toonPauze(); return; }
   startRijden();
 }
 // Sequentiële overgang naar de volgende beladen rit (automatisch op het einde van een rit, of handmatig
@@ -1296,7 +1297,10 @@ function vulVolgStrip() {
     strip.innerHTML = hl; return;
   }
   if (OMLOOP.vrij) {
-    strip.innerHTML = `<div class="vs-rij"><span class="vs-n">${esc(RIT.naar || "")}</span></div><div class="vs-rij"><span class="vs-n" style="opacity:.75">Vrije rit, zonder dienstregeling</span></div>`;
+    const vol = OMLOOP.pendel ? OMLOOP.ritten[RITI + 1] : null;
+    strip.innerHTML = `<div class="vs-rij"><span class="vs-n">${esc(RIT.naar || "")}</span></div>` + (vol
+      ? `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Pendel · hierna ${vol[8] === "terug" ? "terug" : "heen"} naar ${esc(vol[3])}</span></div>`
+      : `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Vrije rit, zonder dienstregeling</span></div>`);
     return;
   }
   const row = OMLOOP.ritten[RITI], vol = OMLOOP.ritten[RITI + 1];
@@ -1613,6 +1617,7 @@ function eindeRit(bereikt) {
   }
   _eindBezig = true;
   if (res) toonRitscore(res, false);
+  else if (OMLOOP.pendel) toast(`Keren — ${OMLOOP.ritten[RITI + 1][8] === "terug" ? "terugrit" : "heenrit"} naar ${OMLOOP.ritten[RITI + 1][3]}`, 4000);
   else if (!bereikt) toast("Eindhalte niet bereikt — volgende rit", 4000);
   // Na 3 s naar de volgende rit — via de eventuele lege rit ertussen (zie naVolgendeRit).
   setTimeout(() => { _eindBezig = false; naVolgendeRit(RITI, RITI + 1); }, 3000);
@@ -2304,14 +2309,33 @@ function vrijUitGpx(tekst, bestandsnaam) {
   const geenHaltes = !doc.getElementsByTagName("wpt").length;
   return { naam, haltes: hs, pts, km: cum[cum.length - 1] / 1000, geenHaltes };
 }
+// Pendel: dezelfde route omgekeerd als terugrit (als er geen aparte terugrit is).
+function vrijOmgekeerd(r) {
+  const h = r.haltes.slice().reverse().map((x, i, a) => [x[0], x[1], x[2], i + 1 < a.length ? (a[i + 1][3] || 0) : 0]);
+  return { naam: r.naam, haltes: h, pts: r.pts.slice().reverse(), km: r.km, geenHaltes: r.geenHaltes };
+}
+const PENDEL_RITTEN = 200; // heen-terug-heen-terug… tot de chauffeur stopt
 async function startVrijeRit(route) {
-  const n = Math.ceil(nu()), tot = route.haltes.reduce((s, h) => s + (h[3] || 0), 0);
+  const n = Math.ceil(nu());
   const wd = new Date().getDay() || 7;
-  const van = route.haltes[0][0], naar = route.haltes[route.haltes.length - 1][0];
+  const duur = r => r.haltes.reduce((s, h) => s + (h[3] || 0), 0);
+  const rij = (r, sleutel, label, t) => ["", label, r.haltes[0][0], r.haltes[r.haltes.length - 1][0], _fmtMin(t % 1440), _fmtMin((t + duur(r)) % 1440), [wd], r.km || 0, sleutel];
+  let routes, ritten;
+  if (route.pendel) {
+    const heen = route, terug = route.terug || vrijOmgekeerd(route);
+    routes = { heen: { haltes: heen.haltes, pts: heen.pts }, terug: { haltes: terug.haltes, pts: terug.pts } };
+    ritten = []; let t = n;
+    for (let i = 0; i < PENDEL_RITTEN; i++) {
+      const r = i % 2 ? terug : heen;
+      ritten.push(rij(r, i % 2 ? "terug" : "heen", i % 2 ? "T" : "H", t)); t += duur(r);
+    }
+  } else {
+    routes = { vrij: { haltes: route.haltes, pts: route.pts } };
+    ritten = [rij(route, "vrij", "", n)];
+  }
   OMLOOP = {
-    afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, naam: route.naam, geenHaltes: !!route.geenHaltes,
-    routes: { vrij: { haltes: route.haltes, pts: route.pts } }, busnr: "", busType: "",
-    ritten: [["", "", van, naar, _fmtMin(n), _fmtMin(n + tot), [wd], route.km || 0, "vrij"]],
+    afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, pendel: !!route.pendel, naam: route.naam,
+    geenHaltes: !!route.geenHaltes, routes, busnr: "", busType: "", ritten,
   };
   try { localStorage.setItem("vrijeRoute", JSON.stringify(route)); } catch {}
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
@@ -2349,15 +2373,26 @@ async function vrijLaadLijst() {
   if (window._vrijEnkelLink) return; // intussen in link-modus gezet (niet ingelogd)
   box.innerHTML = routes.length
     ? `<p class="hint" style="margin:0 0 6px">Klaargezette routes:</p>` + routes.map(x =>
-        `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">▶ ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
+        `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">${x.pendel ? "⇄" : "▶"} ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
     : "";
+}
+// Opgeslagen route (uit /api/route) → route-object; een pendel krijgt een terugrit (eigen GPX of omgekeerd).
+function vrijUitOpgeslagen(o) {
+  const route = vrijUitGpx(o.gpx); route.naam = o.naam;
+  if (o.pendel) {
+    route.pendel = true; if (o.gpxTerug) { route.terug = vrijUitGpx(o.gpxTerug); route.terug.naam = o.naam; }
+    // Zelf toegevoegde begin/einde-haltes bij een pendel duidelijker noemen: beginpunt en keerpunt.
+    const hernoem = (r, eerst, laatst) => { if (!r) return; const h = r.haltes;
+      if (h[0][0] === "Start") h[0][0] = eerst; if (h[h.length - 1][0] === "Einde") h[h.length - 1][0] = laatst; };
+    hernoem(route, "Beginpunt", "Keerpunt"); hernoem(route.terug, "Keerpunt", "Beginpunt");
+  }
+  return route;
 }
 async function vrijStartOpgeslagen(id) {
   const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "laad", id }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.route) throw new Error(d.fout || "Kon deze route niet laden.");
-  const route = vrijUitGpx(d.route.gpx); route.naam = d.route.naam;
-  startVrijeRit(route);
+  startVrijeRit(vrijUitOpgeslagen(d.route));
 }
 $("vrijLijst").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-route]"); if (!b) return;

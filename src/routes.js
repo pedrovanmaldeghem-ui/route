@@ -248,7 +248,8 @@ async function apiRoute(req, env, c) {
       const id = netId(b.id);
       const [meta, gpx] = await Promise.all([c.st.getJSONveilig(`routemeta/${id}`, null), c.st.get(`route/${id}`)]);
       if (!meta || !gpx) return json({ fout: "Route niet gevonden." }, 404);
-      return json({ route: { ...meta, gpx } });
+      const gpxTerug = meta.pendel ? await c.st.get(`routeterug/${id}`) : null;
+      return json({ route: { ...meta, gpx, gpxTerug } });
     }
     const { blobs } = await c.st.list({ prefix: "routemeta/" });
     const routes = (await Promise.all(blobs.map(({ key }) => c.st.getJSONveilig(key, null)))).filter(Boolean);
@@ -262,6 +263,10 @@ async function apiRoute(req, env, c) {
     if (!naam) return json({ fout: "Geef de route een naam." }, 400);
     if (!/<trkpt|<rtept/.test(gpx)) return json({ fout: "Dit is geen route (geen trackpunten)." }, 400);
     if (gpx.length > MAX_GPX) return json({ fout: "Deze route is te groot." }, 400);
+    // Pendel: heenrit (gpx) + terugrit (gpxTerug) die heen-terug-heen… gereden worden.
+    const pendel = !!b.pendel, gpxTerug = pendel ? String(b.gpxTerug || "") : "";
+    if (pendel && !/<trkpt|<rtept/.test(gpxTerug)) return json({ fout: "Geef voor een pendel ook de terugrit (GPX)." }, 400);
+    if (gpxTerug.length > MAX_GPX) return json({ fout: "De terugrit is te groot." }, 400);
     // Zelfde naam = dezelfde route overschrijven, tenzij er een id meekomt.
     let id = netId(b.id);
     if (!id) {
@@ -273,13 +278,16 @@ async function apiRoute(req, env, c) {
     }
     if (!id) id = "rt_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20); // niet te raden
     const meta = { id, naam, km: Math.round((Number(b.km) || 0) * 100) / 100, haltes: Math.max(0, parseInt(b.haltes, 10) || 0), gewijzigd: Date.now() };
+    if (pendel) { meta.pendel = true; meta.kmTerug = Math.round((Number(b.kmTerug) || 0) * 100) / 100; }
     await c.st.set(`route/${id}`, gpx);
+    if (pendel) await c.st.set(`routeterug/${id}`, gpxTerug);
+    else await c.st.delete(`routeterug/${id}`).catch(() => {});
     await c.st.setJSON(`routemeta/${id}`, meta);
     return json({ ok: true, route: meta });
   }
   if (actie === "verwijder") {
     const id = netId(b.id);
-    await Promise.all([c.st.delete(`route/${id}`).catch(() => {}), c.st.delete(`routemeta/${id}`).catch(() => {})]);
+    await Promise.all([`route/${id}`, `routeterug/${id}`, `routemeta/${id}`].map((k) => c.st.delete(k).catch(() => {})));
     return json({ ok: true });
   }
   return json({ fout: "onbekende actie" }, 400);

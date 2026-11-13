@@ -29,8 +29,17 @@ a { color:var(--accent) }
 <div class="kaartje">
   <h1>Extra routes</h1>
   <p class="muted" style="margin:0">Routes zonder dienstregeling, bv. een omleiding. Ze staan meteen in de boordcomputer onder "Route rijden zonder dienstregeling".</p>
-  <label for="bestand">GPX-bestand (bv. uit BRouter-web, export "GPX Track")</label>
+  <label>Soort</label>
+  <div style="display:flex;gap:16px;flex-wrap:wrap">
+    <label style="margin:0;color:var(--fg);font-size:15px"><input type="radio" name="soort" value="enkel" checked> Enkele route</label>
+    <label style="margin:0;color:var(--fg);font-size:15px"><input type="radio" name="soort" value="pendel"> Pendel (heen-terug-heen-…)</label>
+  </div>
+  <label for="bestand" id="lblHeen">GPX-bestand (bv. uit BRouter-web, export "GPX Track")</label>
   <input type="file" id="bestand" accept=".gpx,application/gpx+xml">
+  <div id="terugblok" hidden>
+    <label for="bestandTerug">Terugrit: GPX-bestand</label>
+    <input type="file" id="bestandTerug" accept=".gpx,application/gpx+xml">
+  </div>
   <label for="naam">Naam</label>
   <input type="text" id="naam" placeholder="Omleiding Gent Zuid - Gent Sint-Pieters" maxlength="120">
   <button id="bewaar">Opslaan</button>
@@ -71,17 +80,25 @@ $("bestand").onchange = () => {
   const f = $("bestand").files[0];
   if (f && !$("naam").value.trim()) $("naam").value = f.name.replace(/\.gpx$/i, "").replace(/[_]+/g, " ");
 };
+const isPendel = () => document.querySelector('input[name="soort"]:checked').value === "pendel";
+document.querySelectorAll('input[name="soort"]').forEach((r) => r.onchange = () => {
+  $("terugblok").hidden = !isPendel();
+  $("lblHeen").textContent = isPendel() ? "Heenrit: GPX-bestand" : 'GPX-bestand (bv. uit BRouter-web, export "GPX Track")';
+});
 $("bewaar").onclick = async () => {
-  const f = $("bestand").files[0], naam = $("naam").value.trim();
-  if (!f) return meld("Kies eerst een GPX-bestand.");
+  const f = $("bestand").files[0], ft = $("bestandTerug").files[0], naam = $("naam").value.trim(), pendel = isPendel();
+  if (!f) return meld(pendel ? "Kies het GPX-bestand van de heenrit." : "Kies eerst een GPX-bestand.");
+  if (pendel && !ft) return meld("Kies ook het GPX-bestand van de terugrit.");
   if (!naam) return meld("Geef de route een naam.");
   const gpx = await f.text(), info = gpxInfo(gpx);
   if (!info) return meld("In dit bestand staat geen route. Exporteer in BRouter-web als GPX Track.");
+  const gpxTerug = pendel ? await ft.text() : "", infoT = pendel ? gpxInfo(gpxTerug) : null;
+  if (pendel && !infoT) return meld("In het bestand van de terugrit staat geen route.");
   $("bewaar").disabled = true;
   try {
-    await api({ actie: "bewaar", naam, gpx, km: info.km, haltes: info.haltes });
+    await api({ actie: "bewaar", naam, gpx, km: info.km, haltes: info.haltes, pendel, gpxTerug, kmTerug: infoT ? infoT.km : 0 });
     meld(`✓ "${esc(naam)}" staat in de boordcomputer.`, true);
-    $("bestand").value = ""; $("naam").value = "";
+    $("bestand").value = ""; $("bestandTerug").value = ""; $("naam").value = "";
     laad();
   } catch (e) { meld(naarLogin(e)); }
   finally { $("bewaar").disabled = false; }
@@ -91,7 +108,7 @@ async function laad() {
     const { routes } = await api({ actie: "lijst" });
     $("lijst").className = routes.length ? "" : "muted";
     $("lijst").innerHTML = routes.length ? routes.map((r) =>
-      `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${String(r.km || 0).replace(".", ",")} km${r.haltes ? ` · ${r.haltes} haltes` : ""}</small></div>` +
+      `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${r.pendel ? `Pendel · heen ${String(r.km || 0).replace(".", ",")} km, terug ${String(r.kmTerug || 0).replace(".", ",")} km` : `${String(r.km || 0).replace(".", ",")} km`}${r.haltes ? ` · ${r.haltes} haltes` : ""}</small></div>` +
       `<button class="link" data-link="${esc(r.id)}" title="Link die deze route meteen in de boordcomputer opent">Link kopiëren</button>` +
       `<button data-id="${esc(r.id)}" data-naam="${esc(r.naam)}">Verwijderen</button></div>`).join("")
       : "Nog geen extra routes.";
