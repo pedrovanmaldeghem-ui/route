@@ -52,6 +52,19 @@ export default {
     // BRouter-server gestuurd (die bewaart opgeladen profielen maar tijdelijk) en we sturen door naar
     // BRouter-web met profile=custom_…; optioneel ?z=&lat=&lon= voor de kaartplek.
     if (url.pathname === "/brouter") return naarBrouterWeb(req, env, url);
+    // Manifest voor één route: op het beginscherm zetten opent dan meteen die route (zonder adresbalk).
+    if (url.pathname === "/boord/manifest.json" && url.searchParams.get("route")) {
+      const id = url.searchParams.get("route").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+      const m = await (await env.ASSETS.fetch(new Request(new URL("/boord/manifest.json", url)))).json();
+      let naam = "";
+      try { const meta = await context(env).st.getJSONveilig(`routemeta/${id}`, null); naam = (meta && meta.naam) || ""; } catch {}
+      m.id = `/boord/?route=${id}`;
+      m.start_url = `/boord/?route=${id}`;
+      m.scope = "/boord/";
+      if (naam) { m.name = `Buspilot · ${naam}`; m.short_name = naam.length <= 14 ? naam : "Buspilot"; }
+      m.icons = m.icons.map((i) => ({ ...i }));
+      return new Response(JSON.stringify(m), { headers: { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "no-cache" } });
+    }
     const handler = ROUTES[url.pathname];
     if (handler) {
       try { return await handler(req, await metGeheimen(env), context(env)); }

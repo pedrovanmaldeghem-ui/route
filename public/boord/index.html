@@ -7,6 +7,11 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16.png">
 <link rel="manifest" href="manifest.json">
+<script>
+// Link naar één route (?route=…): het manifest laat die route openen als je de pagina op het beginscherm
+// zet. Zo opent het icoon meteen die route, als app zonder adresbalk.
+try { const r = new URLSearchParams(location.search).get("route"); if (r) document.querySelector('link[rel="manifest"]').href = "manifest.json?route=" + encodeURIComponent(r); } catch {}
+</script>
 <meta name="theme-color" content="#2e7d32">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -316,9 +321,12 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
    beginscherm van de boordcomputer eronder te laten zien. */
 html.linkstart #setup{visibility:hidden}
 html.linkstart #intro{display:flex}
+html.linktip #linktip{display:block !important}
 </style>
 <script>
-try { const q = new URLSearchParams(location.search); if (q.get("route") || q.get("vrij") === "1") document.documentElement.classList.add("linkstart"); } catch {}
+try { const q = new URLSearchParams(location.search); if (q.get("route") || q.get("vrij") === "1") document.documentElement.classList.add("linkstart");
+  const app = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if (q.get("route") && !app) document.documentElement.classList.add("linktip"); } catch {}
 </script>
 </head>
 <body>
@@ -512,6 +520,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <br><br>
     <b>Bron.</b> <span id="brontekst">Dienstregeling: De Lijn open data (Modellicentie Gratis Hergebruik).</span> Kaart: © OpenStreetMap.
     <div class="onaf" id="onaftekst">Onafhankelijk project — niet verbonden aan, noch goedgekeurd door De Lijn, TEC of MIVB.</div>
+    <div class="onaf" id="linktip" style="display:none;color:#c4b5fd">Tip: zonder adresbalk rijden? Tik op <b>Deel</b> en kies <b>Zet op beginscherm</b>. Het icoon opent dan meteen deze route, op volledig scherm.</div>
   </div>
   <button class="start" id="introOk">Begrepen — start</button>
 </div>
