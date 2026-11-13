@@ -1183,6 +1183,7 @@ async function gaNaarRit(i, viaPauze) {
     return;
   }
   controleerRoute(row);                       // op de achtergrond: strookt de route met de online omleidingsdata?
+  if (OMLOOP.eigen && !RIT.limieten) osmLimietenVoor(RIT); // max-snelheden uit OpenStreetMap (op de achtergrond)
   const v = _toMin(row[4]), n = nuRit();
   // Meer dan 1,5 min voor vertrek: pauzescherm. Binnen 1,5 min starten we meteen (zie ook tikPauze).
   if (viaPauze && v != null && (v - n) > 1.5) { toonPauze(); return; }
@@ -1344,6 +1345,74 @@ function zetKop(klasse, afwTekst, afwSub) {
   // Geen vaste bijschriften meer (op tijd/afwijking/te vroeg/te laat); de kleur toont de toestand.
   // afwSub enkel nog voor een échte melding zoals 'wacht op positie'.
   $("afw").innerHTML = esc(afwTekst) + (afwSub ? `<small>${esc(afwSub)}</small>` : "");
+}
+// Max-snelheden voor eigen netten en vrije ritten: die zitten niet in de De Lijn-gegevens, dus halen we
+// ze bij het starten van de rit uit OpenStreetMap (Overpass, de wegen met een 'maxspeed'-tag rond de
+// route). Elke ~20 m langs de route zoeken we de dichtste weg die dezelfde richting uitgaat, en we
+// bouwen dezelfde [meter-langs-route, limiet]-paren als de De Lijn-data. Resultaat 30 dagen bewaard per
+// route, zodat het daarna ook zonder netwerk werkt. Lukt het niet, dan blijft het bord gewoon weg.
+const OSM_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+function osmMaxspeed(v) {
+  v = String(v || "").trim().toLowerCase();
+  const n = parseInt(v, 10);
+  if (/^\d+$/.test(v)) return n;
+  if (/^\d+\s*mph$/.test(v)) return Math.round(n * 1.609);
+  if (/zone\s*30|:zone30/.test(v)) return 30;
+  if (/zone\s*20|:zone20/.test(v)) return 20;
+  if (/urban$/.test(v)) return 50;
+  if (/rural$/.test(v)) return v.startsWith("be-vlg") ? 70 : 90;
+  if (/motorway$/.test(v)) return 120;
+  if (/trunk$/.test(v)) return 120;
+  return null;
+}
+async function osmLimietenVoor(rit) {
+  const g = rit && rit.geo; if (!g || !g.pts || g.pts.length < 2) return;
+  const sleutel = "osmlim:" + [g.pts[0], g.pts[g.pts.length - 1]].map(p => p[0].toFixed(4) + "," + p[1].toFixed(4)).join(";") + ";" + Math.round(g.totaal);
+  try {
+    const c = JSON.parse(localStorage.getItem(sleutel) || "null");
+    if (c && Date.now() - c.t < 30 * 864e5) { rit.limieten = c.lim; return; }
+  } catch {}
+  let s = 90, w = 180, n = -90, e = -180;
+  for (const [la, lo] of g.pts) { s = Math.min(s, la); n = Math.max(n, la); w = Math.min(w, lo); e = Math.max(e, lo); }
+  if ((n - s) * (e - w) > 0.25) return; // te groot gebied voor één opvraging
+  const q = `[out:json][timeout:25];way[highway][maxspeed](${(s - 0.0015).toFixed(5)},${(w - 0.0025).toFixed(5)},${(n + 0.0015).toFixed(5)},${(e + 0.0025).toFixed(5)});out tags geom;`;
+  let data = null;
+  for (const url of OSM_OVERPASS) {
+    try {
+      const r = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "content-type": "application/x-www-form-urlencoded" } });
+      if (r.ok) { data = await r.json(); break; }
+    } catch {}
+  }
+  if (!data || !Array.isArray(data.elements)) return;
+  // Alle wegstukken met hun limiet en koers.
+  const seg = [];
+  for (const el of data.elements) {
+    const lim = osmMaxspeed(el.tags && (el.tags["maxspeed:bus"] || el.tags["maxspeed:hgv"] || el.tags.maxspeed));
+    if (!lim || !el.geometry) continue;
+    const gp = el.geometry.map(x => [x.lat, x.lon]);
+    for (let i = 0; i < gp.length - 1; i++) seg.push({ a: gp[i], b: gp[i + 1], lim, k: koers(gp[i], gp[i + 1]) });
+  }
+  if (!seg.length) return;
+  const puntOp = (afst) => {
+    let i = 0; while (i < g.cum.length - 2 && g.cum[i + 1] < afst) i++;
+    const L = g.cum[i + 1] - g.cum[i] || 1, t = Math.min(1, Math.max(0, (afst - g.cum[i]) / L));
+    return { p: [g.pts[i][0] + t * (g.pts[i + 1][0] - g.pts[i][0]), g.pts[i][1] + t * (g.pts[i + 1][1] - g.pts[i][1])], k: koers(g.pts[i], g.pts[i + 1]) };
+  };
+  const hoekVerschil = (x, y) => { const d = Math.abs(x - y) % 180; return Math.min(d, 180 - d); }; // wegen gaan in twee richtingen
+  const lim = [];
+  for (let afst = 0; afst <= g.totaal; afst += 20) {
+    const { p, k } = puntOp(afst);
+    let best = null, bestD = 20;
+    for (const sg of seg) {
+      if (hoekVerschil(sg.k, k) > 35) continue;
+      const d = projSeg(p, sg.a, sg.b).d;
+      if (d < bestD) { bestD = d; best = sg; }
+    }
+    const v = best ? best.lim : null;
+    if (!lim.length || lim[lim.length - 1][1] !== v) lim.push([Math.round(afst), v]);
+  }
+  rit.limieten = lim;
+  try { localStorage.setItem(sleutel, JSON.stringify({ t: Date.now(), lim })); } catch {}
 }
 // Snelheidsmeter links onderaan de kaart bijwerken: huidige snelheid + de max toegelaten snelheid.
 function maxLimietVoor() {
