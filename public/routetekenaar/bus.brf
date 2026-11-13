@@ -19,6 +19,7 @@ assign validForCars        = true
 assign avoid_toll          = false  # %avoid_toll% | Avoid paid roads | boolean
 assign avoid_unpaved       = false  # %avoid_unpaved% | Avoid unpaved roads, if possible | boolean
 assign avoid_motorways     = false  # %avoid_motorways% | Avoid motorways | boolean
+assign volg_punten         = true   # %volg_punten% | Volg mijn punten: ook tegen de richting in, door voetgangerszones en paaltjes als een punt daar ligt (met hoge strafkost) | boolean
 assign door_knippen        = true   # %door_knippen% | Door knippen: straten met vehicle=no / motor_vehicle=no zonder bus=yes (met strafkost) | boolean
 
 assign add_beeline         = false  # %add_beeline% | Enable beeline on distant start/end points | boolean
@@ -90,8 +91,16 @@ assign busaccess = or highway=busway or bus=yes|designated psv=yes|designated
 assign knipaccess = and door_knippen
                     and highway=residential|living_street|unclassified|service|tertiary|secondary
                         or vehicle=no or motor_vehicle=no motorcar=no
-assign caraccess = or caraccess_auto or busaccess knipaccess
-assign knip_penalty = if and knipaccess not or caraccess_auto busaccess then 2 else 0
+# Noodweg (volg_punten): al de rest waar een bus fysiek zou kunnen rijden (voetgangerszones, straten
+# dicht voor verkeer) is ook bereikbaar, maar met een hoge strafkost. De route komt er dus enkel als je
+# er zelf een punt zet, of als het anders een enorme omweg is.
+assign noodaccess = and volg_punten
+                    highway=pedestrian|residential|living_street|unclassified|service|tertiary|secondary|primary|busway|road
+assign caraccess = or caraccess_auto or busaccess or knipaccess noodaccess
+assign knip_penalty = if or caraccess_auto busaccess then 0
+                      else if knipaccess then 2
+                      else if noodaccess then 40
+                      else 0
 
 assign caraccess_destination
        switch motorcar=
@@ -129,7 +138,10 @@ assign busbeiderichtingen = or busway=opposite
                                busway:right=opposite
 assign isbadoneway = if busbeiderichtingen then false
                      else if reversedirection=yes then ( if oneway= then junction=roundabout else oneway=yes|true|1 ) else oneway=-1
-assign onewayspeedlimit = if isbadoneway then 0 else 999
+# Tegen de richting in: met volg_punten traag (15 km/u) en met strafkost, zodat het enkel gebeurt als je
+# er een punt zet (bv. Stationsstraat Oudenaarde, waar bussen in beide richtingen mogen).
+assign onewayspeedlimit = if isbadoneway then ( if volg_punten then 15 else 0 ) else 999
+assign oneway_penalty = if and isbadoneway volg_punten then 40 else 0
 
 assign islinktype = highway=motorway_link|trunk_link|primary_link|secondary_link|tertiary_link
 
@@ -260,6 +272,7 @@ assign costfactor =
   else min 9999
   add town_penalty
   add knip_penalty
+  add oneway_penalty
   add no_forest_penalty
   add no_river_penalty
   0
@@ -326,11 +339,12 @@ assign caraccess_auto
 
 assign caraccess = or caraccess_auto barrier=bus_trap
 
+# Paaltjes, slagbomen e.d.: dicht, behalve met volg_punten (dan met een hoge eenmalige strafkost).
 assign initialcost =
        switch and avoid_toll barrier=toll_booth 1000000
        switch caraccess
               0
-              1000000
+              switch volg_punten 3000 1000000
 
 assign maxspeed =
 
