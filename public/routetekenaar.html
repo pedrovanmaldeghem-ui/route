@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Routetekenaar · Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  #rt-app { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; color: #1f2933; }
+  #rt-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; background: #f5f7fa; border-bottom: 1px solid #d9dee5; }
+  #rt-toolbar input[type=text] { padding: 6px 8px; border: 1px solid #c3cad3; border-radius: 6px; min-width: 180px; font: inherit; }
+  #rt-app button { padding: 6px 10px; border: 1px solid #c3cad3; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
+  #rt-app button:hover { background: #eef1f5; }
+  #rt-app button.rt-active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  #rt-app button.rt-primary { background: #15803d; border-color: #15803d; color: #fff; }
+  #rt-app button.rt-primary:hover { background: #166534; }
+  .rt-group { display: inline-flex; gap: 0; }
+  .rt-group button:first-child { border-radius: 6px 0 0 6px; }
+  .rt-group button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+  #rt-info { margin-left: auto; color: #52606d; }
+  #rt-map { flex: 1; min-height: 300px; }
+  #rt-help { padding: 6px 10px; font-size: 12px; color: #52606d; background: #f5f7fa; border-top: 1px solid #d9dee5; }
+  .rt-pt { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid #1d4ed8; box-sizing: border-box; }
+  .rt-pt.rt-first { border-color: #15803d; }
+  .rt-stop { width: 18px; height: 18px; border-radius: 4px; background: #f59e0b; border: 2px solid #fff; box-shadow: 0 0 0 1px #92400e; box-sizing: border-box; }
+  .rt-stoplabel { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 4px; padding: 1px 4px; font-size: 11px; white-space: nowrap; }
+  .rt-popup label { display: block; margin: 4px 0; }
+  .rt-popup input[type=text] { width: 150px; padding: 3px 5px; }
+  .rt-popup .rt-row { display: flex; gap: 6px; margin-top: 6px; }
+  #rt-app a.rt-terug { color: #1d4ed8; text-decoration: none; font-weight: 600; }
+  .rt-busleg { display: inline-block; width: 18px; height: 4px; background: #dc2626; vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div id="rt-app">
+  <div id="rt-toolbar">
+    <a href="/" class="rt-terug" title="Terug naar Eigennet">← Eigennet</a>
+    <input type="text" id="rt-name" value="Nieuwe route" title="Naam van de route">
+    <div class="rt-group">
+      <button type="button" id="rt-mode-route" class="rt-active" title="Nieuwe stukken volgen de weg, ook over busbanen en busstraten">Weg volgen (bus)</button>
+      <button type="button" id="rt-mode-line" title="Nieuwe stukken worden rechte lijnen (bv. over perrons)">Vrij tekenen</button>
+    </div>
+    <button type="button" id="rt-undo" title="Laatste punt verwijderen (Ctrl+Z)">Ongedaan maken</button>
+    <button type="button" id="rt-clear">Wissen</button>
+    <button type="button" id="rt-import">GPX openen</button>
+    <input type="file" id="rt-file" accept=".gpx,application/gpx+xml" hidden>
+    <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
+    <button type="button" id="rt-export" class="rt-primary">Download GPX</button>
+    <span id="rt-info">0,00 km</span>
+  </div>
+  <div id="rt-map"></div>
+  <div id="rt-help">
+    Klik op de kaart om punten toe te voegen. <b>Weg volgen</b> volgt de weg, <b>Vrij tekenen</b> trekt een rechte lijn (handig over busperrons).
+    <b>Weg volgen</b> rijdt zoals een bus: ook over busbanen, busstraten en door busvallen.
+    Sleep een punt om het te verplaatsen. Klik op een punt om er een halte van te maken of het te verwijderen. Klik op een stuk lijn om het te wisselen tussen weg volgen en vrij.
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- Instellingen ---------------------------------------------------
+  var BROUTER_URL = 'https://brouter.de/brouter';  // publieke BRouter-server (fair use)
+  var BROUTER_PROFILE = 'car-fast';                 // terugval als het busprofiel niet laadt
+  var BUS_PROFILE_URL = '/routetekenaar/bus.brf';   // car-fast + busbanen/busstraten (zie dat bestand)
+  var OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter']; // tweede = reserve
+  var START_VIEW = [51.0357, 3.7106];               // Gent-Sint-Pieters
+  var START_ZOOM = 16;
+
+  // ---- Kaart ----------------------------------------------------------
+  var map = L.map('rt-map', { doubleClickZoom: false }).setView(START_VIEW, START_ZOOM);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bijdragers'
+  }).addTo(map);
+
+  // ---- Toestand -------------------------------------------------------
+  // Elk punt: { latlng, marker, stop, name, modeIn, coordsIn, lineIn, req }
+  // modeIn/coordsIn/lineIn beschrijven het stuk van het vorige punt naar dit punt.
+  var points = [];
+  var mode = 'route';
+  var reqCounter = 0;
+
+  var STYLE = {
+    route:   { color: '#1d4ed8', weight: 5, opacity: 0.85 },
+    line:    { color: '#ea580c', weight: 5, opacity: 0.9, dashArray: '8 6' },
+    loading: { color: '#9aa5b1', weight: 4, opacity: 0.8, dashArray: '2 6' }
+  };
+
+  // ---- Hulpfuncties ---------------------------------------------------
+  function el(id) { return document.getElementById(id); }
+
+  function setMode(m) {
+    mode = m;
+    el('rt-mode-route').classList.toggle('rt-active', m === 'route');
+    el('rt-mode-line').classList.toggle('rt-active', m === 'line');
+  }
+
+  function iconFor(p, idx) {
+    if (p.stop) {
+      return L.divIcon({ className: '', html: '<div class="rt-stop"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    }
+    return L.divIcon({ className: '', html: '<div class="rt-pt' + (idx === 0 ? ' rt-first' : '') + '"></div>', iconSize: [12, 12], iconAnchor: [6, 6] });
+  }
+
+  function refreshMarker(i) {
+    var p = points[i];
+    if (!p) return;
+    p.marker.setIcon(iconFor(p, i));
+    p.marker.unbindTooltip();
+    if (p.stop) {
+      p.marker.bindTooltip(p.name || 'Halte', { permanent: true, direction: 'right', offset: [10, 0], className: 'rt-stoplabel' });
+    }
+  }
+
+  function indexOfMarker(marker) {
+    for (var i = 0; i < points.length; i++) if (points[i].marker === marker) return i;
+    return -1;
+  }
+
+  function drawSegment(i, coords, style) {
+    var p = points[i];
+    if (p.lineIn) map.removeLayer(p.lineIn);
+    p.lineIn = L.polyline(coords, style).addTo(map);
+    p.lineIn.on('click', function (e) {
+      L.DomEvent.stopPropagation(e);
+      var idx = points.indexOf(p);
+      if (idx > 0) openSegmentPopup(idx, e.latlng);
+    });
+  }
+
+  // Het busprofiel wordt eenmalig naar BRouter gestuurd; de server geeft er een tijdelijke id voor terug.
+  var busProfiel = null;
+  function busProfielId(vernieuw) {
+    if (busProfiel && !vernieuw) return busProfiel;
+    busProfiel = fetch(BUS_PROFILE_URL).then(function (r) { return r.text(); })
+      .then(function (txt) { return fetch(BROUTER_URL + '/profile', { method: 'POST', body: txt }); })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.error || !d.profileid) throw new Error(d.error || 'geen profiel'); return d.profileid; })
+      .catch(function (e) { console.warn('Busprofiel niet geladen, autoprofiel gebruikt:', e); busProfiel = null; return BROUTER_PROFILE; });
+    return busProfiel;
+  }
+  function fetchRoute(a, b, opnieuw) {
+    return busProfielId(opnieuw).then(function (profiel) { return fetchRouteMet(a, b, profiel); })
+      .catch(function (e) { if (!opnieuw) return fetchRoute(a, b, true); throw e; });
+  }
+  function fetchRouteMet(a, b, profiel) {
+    var lonlats = a.lng.toFixed(6) + ',' + a.lat.toFixed(6) + '|' + b.lng.toFixed(6) + ',' + b.lat.toFixed(6);
+    var url = BROUTER_URL + '?lonlats=' + encodeURIComponent(lonlats) +
+              '&profile=' + encodeURIComponent(profiel) +
+              '&alternativeidx=0&format=geojson';
+    return fetch(url).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('HTTP ' + r.status)); });
+      return r.json();
+    }).then(function (gj) {
+      var c = gj.features[0].geometry.coordinates;
+      return c.map(function (x) { return [x[1], x[0]]; });
+    });
+  }
+
+  // Bereken het stuk van punt i-1 naar punt i.
+  function computeSegment(i) {
+    if (i <= 0 || i >= points.length) return;
+    var p = points[i];
+    var a = points[i - 1].latlng, b = p.latlng;
+    var straight = [[a.lat, a.lng], [b.lat, b.lng]];
+
+    if (p.modeIn === 'line') {
+      p.coordsIn = straight;
+      drawSegment(i, straight, STYLE.line);
+      updateInfo();
+      return;
+    }
+
+    var myReq = ++reqCounter;
+    p.req = myReq;
+    p.coordsIn = straight;
+    drawSegment(i, straight, STYLE.loading);
+
+    fetchRoute(a, b).then(function (coords) {
+      if (p.req !== myReq || points.indexOf(p) === -1) return; // verouderd
+      // Laat de lijn exact op de aangeklikte punten beginnen en eindigen.
+      coords[0] = [a.lat, a.lng];
+      coords[coords.length - 1] = [b.lat, b.lng];
+      p.coordsIn = coords;
+      drawSegment(points.indexOf(p), coords, STYLE.route);
+      updateInfo();
+    }).catch(function (err) {
+      if (p.req !== myReq || points.indexOf(p) === -1) return;
+      console.warn('Routering mislukt, rechte lijn gebruikt:', err);
+      p.modeIn = 'line';
+      p.coordsIn = straight;
+      drawSegment(points.indexOf(p), straight, STYLE.line);
+      updateInfo();
+    });
+  }
+
+  function updateInfo() {
+    var m = 0, stops = 0;
+    for (var i = 1; i < points.length; i++) {
+      var c = points[i].coordsIn || [];
+      for (var j = 1; j < c.length; j++) m += map.distance(c[j - 1], c[j]);
+    }
+    points.forEach(function (p) { if (p.stop) stops++; });
+    el('rt-info').textContent = (m / 1000).toFixed(2).replace('.', ',') + ' km · ' +
+      points.length + ' punten · ' + stops + (stops === 1 ? ' halte' : ' haltes') +
+      (el('rt-info').dataset.bus ? ' · ' + el('rt-info').dataset.bus : '');
+  }
+
+  // ---- Punten toevoegen / verwijderen ---------------------------------
+  function addPoint(latlng, opts) {
+    opts = opts || {};
+    var p = {
+      latlng: L.latLng(latlng),
+      stop: !!opts.stop,
+      name: opts.name || '',
+      modeIn: opts.modeIn || mode,
+      coordsIn: null, lineIn: null, req: 0, marker: null
+    };
+    p.marker = L.marker(p.latlng, { draggable: true, icon: iconFor(p, points.length) }).addTo(map);
+
+    p.marker.on('dragend', function () {
+      var i = points.indexOf(p);
+      p.latlng = p.marker.getLatLng();
+      computeSegment(i);
+      computeSegment(i + 1);
+    });
+    p.marker.on('click', function (e) {
+      L.DomEvent.stopPropagation(e);
+      openPointPopup(points.indexOf(p));
+    });
+
+    points.push(p);
+    refreshMarker(points.length - 1);
+    if (!opts.noCompute) computeSegment(points.length - 1);
+    updateInfo();
+    return p;
+  }
+
+  function removePoint(i) {
+    var p = points[i];
+    if (!p) return;
+    map.removeLayer(p.marker);
+    if (p.lineIn) map.removeLayer(p.lineIn);
+    points.splice(i, 1);
+
+    if (i === 0 && points.length) {
+      // Nieuw eerste punt heeft geen inkomend stuk meer.
+      var f = points[0];
+      if (f.lineIn) map.removeLayer(f.lineIn);
+      f.lineIn = null; f.coordsIn = null; f.req = 0;
+    } else if (i < points.length) {
+      computeSegment(i); // verbind vorige met volgende
+    }
+    for (var k = 0; k < points.length; k++) refreshMarker(k);
+    updateInfo();
+  }
+
+  function clearAll() {
+    while (points.length) removePoint(points.length - 1);
+  }
+
+  // ---- Popups ---------------------------------------------------------
+  function openPointPopup(i) {
+    var p = points[i];
+    if (!p) return;
+    var box = L.DomUtil.create('div', 'rt-popup');
+
+    var lab = L.DomUtil.create('label', '', box);
+    var chk = L.DomUtil.create('input', '', lab);
+    chk.type = 'checkbox';
+    chk.checked = p.stop;
+    lab.appendChild(document.createTextNode(' Halte / perron'));
+
+    var nameLab = L.DomUtil.create('label', '', box);
+    nameLab.appendChild(document.createTextNode('Naam: '));
+    var name = L.DomUtil.create('input', '', nameLab);
+    name.type = 'text';
+    name.placeholder = 'bv. Perron 13';
+    name.value = p.name;
+
+    var row = L.DomUtil.create('div', 'rt-row', box);
+    var save = L.DomUtil.create('button', '', row);
+    save.type = 'button'; save.textContent = 'Opslaan';
+    var del = L.DomUtil.create('button', '', row);
+    del.type = 'button'; del.textContent = 'Punt verwijderen';
+
+    L.DomEvent.disableClickPropagation(box);
+
+    function apply() {
+      p.stop = chk.checked || name.value.trim() !== '';
+      p.name = name.value.trim();
+      refreshMarker(points.indexOf(p));
+      updateInfo();
+      map.closePopup();
+    }
+    save.addEventListener('click', apply);
+    name.addEventListener('keydown', function (e) { if (e.key === 'Enter') apply(); });
+    del.addEventListener('click', function () { map.closePopup(); removePoint(points.indexOf(p)); });
+
+    L.popup({ offset: [0, -6] }).setLatLng(p.latlng).setContent(box).openOn(map);
+    setTimeout(function () { name.focus(); }, 50);
+  }
+
+  function openSegmentPopup(i, latlng) {
+    var p = points[i];
+    var box = L.DomUtil.create('div', 'rt-popup');
+    var txt = L.DomUtil.create('div', '', box);
+    txt.textContent = p.modeIn === 'line' ? 'Dit stuk is vrij getekend.' : 'Dit stuk volgt de weg.';
+    var row = L.DomUtil.create('div', 'rt-row', box);
+    var sw = L.DomUtil.create('button', '', row);
+    sw.type = 'button';
+    sw.textContent = p.modeIn === 'line' ? 'Weg laten volgen' : 'Rechte lijn maken';
+    var ins = L.DomUtil.create('button', '', row);
+    ins.type = 'button';
+    ins.textContent = 'Punt invoegen';
+    L.DomEvent.disableClickPropagation(box);
+
+    sw.addEventListener('click', function () {
+      p.modeIn = p.modeIn === 'line' ? 'route' : 'line';
+      map.closePopup();
+      computeSegment(points.indexOf(p));
+    });
+    ins.addEventListener('click', function () {
+      map.closePopup();
+      insertPoint(points.indexOf(p), latlng);
+    });
+    L.popup().setLatLng(latlng).setContent(box).openOn(map);
+  }
+
+  // Voeg een punt in vóór index i (op het stuk van i-1 naar i).
+  function insertPoint(i, latlng) {
+    var modeIn = points[i].modeIn;
+    var p = addPoint(latlng, { modeIn: modeIn, noCompute: true });
+    points.pop();
+    points.splice(i, 0, p);
+    for (var k = 0; k < points.length; k++) refreshMarker(k);
+    computeSegment(i);
+    computeSegment(i + 1);
+  }
+
+  // ---- GPX export -----------------------------------------------------
+  function xmlEscape(s) {
+    return String(s).replace(/[<>&'"]/g, function (c) {
+      return { '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c];
+    });
+  }
+
+  function buildGpx() {
+    var name = el('rt-name').value.trim() || 'Route';
+    var out = [];
+    out.push('<?xml version="1.0" encoding="UTF-8"?>');
+    out.push('<gpx version="1.1" creator="Routetekenaar" xmlns="http://www.topografix.com/GPX/1/1">');
+    out.push('  <metadata><name>' + xmlEscape(name) + '</name><time>' + new Date().toISOString() + '</time></metadata>');
+
+    points.forEach(function (p, i) {
+      if (!p.stop) return;
+      out.push('  <wpt lat="' + p.latlng.lat.toFixed(7) + '" lon="' + p.latlng.lng.toFixed(7) + '">' +
+               '<name>' + xmlEscape(p.name || ('Halte ' + (i + 1))) + '</name><type>Halte</type></wpt>');
+    });
+
+    out.push('  <trk><name>' + xmlEscape(name) + '</name><trkseg>');
+    var last = null;
+    function pushPt(lat, lng) {
+      var key = lat.toFixed(7) + ',' + lng.toFixed(7);
+      if (key === last) return;
+      last = key;
+      out.push('    <trkpt lat="' + lat.toFixed(7) + '" lon="' + lng.toFixed(7) + '"/>');
+    }
+    if (points.length) pushPt(points[0].latlng.lat, points[0].latlng.lng);
+    for (var i = 1; i < points.length; i++) {
+      (points[i].coordsIn || []).forEach(function (c) { pushPt(c[0], c[1]); });
+    }
+    out.push('  </trkseg></trk>');
+    out.push('</gpx>');
+    return out.join('\n');
+  }
+
+  function exportGpx() {
+    if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
+    var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
+    if (busy) { alert('De route wordt nog berekend. Probeer het zo meteen opnieuw.'); return; }
+    var blob = new Blob([buildGpx()], { type: 'application/gpx+xml' });
+    var a = document.createElement('a');
+    var fname = (el('rt-name').value.trim() || 'route').replace(/[^\w\-]+/g, '_') + '.gpx';
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  // ---- GPX import (om een route later verder te bewerken) -------------
+  function importGpx(text) {
+    var doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) { alert('Dit GPX-bestand kon niet gelezen worden.'); return; }
+    var trkpts = Array.prototype.slice.call(doc.getElementsByTagName('trkpt'));
+    if (!trkpts.length) trkpts = Array.prototype.slice.call(doc.getElementsByTagName('rtept'));
+    if (trkpts.length < 2) { alert('Geen track gevonden in dit bestand.'); return; }
+
+    clearAll();
+    var nm = doc.querySelector('trk > name') || doc.querySelector('metadata > name');
+    if (nm) el('rt-name').value = nm.textContent;
+
+    var coords = trkpts.map(function (t) { return [parseFloat(t.getAttribute('lat')), parseFloat(t.getAttribute('lon'))]; });
+    var wpts = Array.prototype.slice.call(doc.getElementsByTagName('wpt')).map(function (w) {
+      var n = w.getElementsByTagName('name')[0];
+      return { ll: L.latLng(parseFloat(w.getAttribute('lat')), parseFloat(w.getAttribute('lon'))), name: n ? n.textContent : '' };
+    });
+
+    // Bewaar de track als vaste lijn: begin- en eindpunt + haltes worden versleepbare punten.
+    // Haltes worden op het dichtstbijzijnde trackpunt gelegd zodat de volgorde klopt.
+    var anchors = [{ idx: 0 }, { idx: coords.length - 1 }];
+    wpts.forEach(function (w) {
+      var best = 0, bd = Infinity;
+      coords.forEach(function (c, k) { var d = w.ll.distanceTo(c); if (d < bd) { bd = d; best = k; } });
+      anchors.push({ idx: best, stop: true, name: w.name });
+    });
+    anchors.sort(function (a, b) { return a.idx - b.idx; });
+    var merged = [];
+    anchors.forEach(function (a) {
+      var prev = merged[merged.length - 1];
+      if (prev && prev.idx === a.idx) { if (a.stop) { prev.stop = true; prev.name = a.name; } }
+      else merged.push(a);
+    });
+
+    merged.forEach(function (a, k) {
+      var p = addPoint(coords[a.idx], { stop: a.stop, name: a.name, modeIn: 'line', noCompute: true });
+      if (k > 0) {
+        var seg = coords.slice(merged[k - 1].idx, a.idx + 1);
+        p.coordsIn = seg;
+        drawSegment(points.length - 1, seg, STYLE.line);
+      }
+    });
+    for (var k = 0; k < points.length; k++) refreshMarker(k);
+    updateInfo();
+    map.fitBounds(L.latLngBounds(coords), { padding: [30, 30] });
+  }
+
+  // ---- Busbanen uit OpenStreetMap ------------------------------------
+  // Toont busbanen (busway=lane, lanes:bus, ...) en busstraten (highway=busway, enkel bus/psv) in het
+  // zichtbare kaartstuk. Klik op een busbaan om er punten op te zetten zoals gewoonlijk.
+  var busLaag = L.layerGroup(), busAan = false, busTimer = null, busVraag = 0, busGeladen = {};
+  function busQuery(bb) {
+    var b = bb.getSouth().toFixed(4) + ',' + bb.getWest().toFixed(4) + ',' + bb.getNorth().toFixed(4) + ',' + bb.getEast().toFixed(4);
+    return '[out:json][timeout:25];(' +
+      'way["highway"="busway"](' + b + ');' +
+      'way["busway"~"lane|opposite_lane"](' + b + ');' +
+      'way["busway:left"~"lane"](' + b + ');way["busway:right"~"lane"](' + b + ');way["busway:both"~"lane"](' + b + ');' +
+      'way["lanes:bus"](' + b + ');way["lanes:psv"](' + b + ');' +
+      'way["bus:lanes"~"designated"](' + b + ');way["psv:lanes"~"designated"](' + b + ');' +
+      'way["highway"]["access"="no"]["bus"~"yes|designated"](' + b + ');' +
+      'way["highway"]["motor_vehicle"="no"]["bus"~"yes|designated"](' + b + ');' +
+      'way["highway"]["motor_vehicle"="no"]["psv"~"yes|designated"](' + b + ');' +
+      ');out geom;';
+  }
+  function busLaad() {
+    if (!busAan) return;
+    if (map.getZoom() < 13) { el('rt-info').dataset.bus = 'Zoom verder in om busbanen te zien.'; updateInfo(); return; }
+    var bb = map.getBounds().pad(0.2), mijn = ++busVraag;
+    el('rt-info').dataset.bus = 'Busbanen laden…'; updateInfo();
+    var body = 'data=' + encodeURIComponent(busQuery(bb));
+    function vraag(i) {
+      return fetch(OVERPASS_URLS[i], { method: 'POST', body: body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .catch(function (e) { if (i + 1 < OVERPASS_URLS.length) return vraag(i + 1); throw e; });
+    }
+    vraag(0)
+      .then(function (d) {
+        if (mijn !== busVraag) return;
+        var n = 0;
+        (d.elements || []).forEach(function (w) {
+          if (!w.geometry || busGeladen[w.id]) return;
+          busGeladen[w.id] = true; n++;
+          var t = w.tags || {};
+          var straat = t.highway === 'busway' || t.access === 'no' || t.motor_vehicle === 'no';
+          L.polyline(w.geometry.map(function (g) { return [g.lat, g.lon]; }), { color: '#dc2626', weight: straat ? 7 : 5, opacity: 0.55, interactive: false })
+            .bindTooltip((straat ? 'Busstraat' : 'Busbaan') + (t.name ? ': ' + t.name : ''))
+            .addTo(busLaag);
+        });
+        el('rt-info').dataset.bus = Object.keys(busGeladen).length + ' busbaan-stukken'; updateInfo();
+      })
+      .catch(function (e) { if (mijn === busVraag) { el('rt-info').dataset.bus = 'Busbanen laden mislukt (probeer opnieuw)'; updateInfo(); } console.warn(e); });
+  }
+  function busToggle() {
+    busAan = !busAan;
+    el('rt-bus').classList.toggle('rt-active', busAan);
+    if (busAan) { busLaag.addTo(map); busLaad(); }
+    else { map.removeLayer(busLaag); delete el('rt-info').dataset.bus; updateInfo(); }
+  }
+  map.on('moveend', function () { clearTimeout(busTimer); busTimer = setTimeout(busLaad, 600); });
+
+  // ---- Bediening ------------------------------------------------------
+  map.on('click', function (e) { addPoint(e.latlng); });
+  el('rt-mode-route').addEventListener('click', function () { setMode('route'); });
+  el('rt-mode-line').addEventListener('click', function () { setMode('line'); });
+  el('rt-undo').addEventListener('click', function () { removePoint(points.length - 1); });
+  el('rt-clear').addEventListener('click', function () {
+    if (!points.length || confirm('Hele route wissen?')) clearAll();
+  });
+  el('rt-export').addEventListener('click', exportGpx);
+  el('rt-bus').addEventListener('click', busToggle);
+  el('rt-import').addEventListener('click', function () { el('rt-file').click(); });
+  el('rt-file').addEventListener('change', function () {
+    var f = this.files[0];
+    if (!f) return;
+    f.text().then(importGpx);
+    this.value = '';
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT') return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); removePoint(points.length - 1); }
+    if (e.key === 'r' || e.key === 'R') setMode('route');
+    if (e.key === 'v' || e.key === 'V') setMode('line');
+  });
+
+  updateInfo();
+})();
+</script>
+</body>
+</html>
