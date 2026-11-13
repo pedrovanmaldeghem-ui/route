@@ -292,6 +292,9 @@
       if (dist[doel] === Infinity) throw new Error('Geen busverbinding gevonden tussen deze twee punten.');
       var pad = [], y = doel;
       while (y !== -1) { pad.unshift(pos[y]); if (via[y]) pad.unshift(via[y]); y = vorige[y]; }
+      // Zonder de aangeklikte punten zelf: de route begint en eindigt op de buslijn.
+      if (pad.length > 2 && pad[0] === A) pad.shift();
+      if (pad.length > 2 && pad[pad.length - 1] === B) pad.pop();
       return pad;
     });
   }
@@ -372,6 +375,29 @@
     });
   }
 
+  // Een punt dat net naast de weg gezet is, op de weg leggen (op het begin/einde van de berekende route),
+  // zodat de lijn mooi in het midden van de weg loopt i.p.v. met een uitstulpje naar de klik.
+  // Verder dan SNAP_MAX meter: dan laten we het punt staan en tekenen we het stukje ernaartoe.
+  var SNAP_MAX = 75;
+  function zetOpWeg(idx, ll) {
+    var p = points[idx]; if (!p) return;
+    var nieuw = L.latLng(ll[0], ll[1]);
+    p.latlng = nieuw; p.marker.setLatLng(nieuw);
+    // Aansluitende stukken laten meeschuiven.
+    if (idx > 0 && p.coordsIn && p.coordsIn.length) { p.coordsIn[p.coordsIn.length - 1] = [nieuw.lat, nieuw.lng]; if (p.lineIn) p.lineIn.setLatLngs(p.coordsIn); }
+    var nxt = points[idx + 1];
+    if (nxt && nxt.coordsIn && nxt.coordsIn.length) { nxt.coordsIn[0] = [nieuw.lat, nieuw.lng]; if (nxt.lineIn) nxt.lineIn.setLatLngs(nxt.coordsIn); }
+  }
+  function aansluiten(i, coords) {
+    var a = points[i - 1].latlng, b = points[i].latlng;
+    var c0 = coords[0], cn = coords[coords.length - 1];
+    if (map.distance(a, c0) <= SNAP_MAX) zetOpWeg(i - 1, c0); else coords.unshift([a.lat, a.lng]);
+    if (map.distance(b, cn) <= SNAP_MAX) { points[i].latlng = L.latLng(cn[0], cn[1]); points[i].marker.setLatLng(points[i].latlng);
+      var nxt = points[i + 1]; if (nxt && nxt.coordsIn && nxt.coordsIn.length) { nxt.coordsIn[0] = cn.slice(); if (nxt.lineIn) nxt.lineIn.setLatLngs(nxt.coordsIn); } }
+    else coords.push([b.lat, b.lng]);
+    return coords;
+  }
+
   // Bereken het stuk van punt i-1 naar punt i.
   function computeSegment(i) {
     if (i <= 0 || i >= points.length) return;
@@ -391,7 +417,7 @@
       drawSegment(i, straight, STYLE.loading);
       busnetRoute(a, b).then(function (coords) {
         if (p.req !== bnReq || points.indexOf(p) === -1) return;
-        p.coordsIn = coords;
+        p.coordsIn = aansluiten(points.indexOf(p), coords);
         drawSegment(points.indexOf(p), coords, STYLE.busnet);
         updateInfo();
       }).catch(function (err) {
@@ -413,10 +439,8 @@
 
     fetchRoute(a, b).then(function (coords) {
       if (p.req !== myReq || points.indexOf(p) === -1) return; // verouderd
-      // Laat de lijn exact op de aangeklikte punten beginnen en eindigen.
-      coords[0] = [a.lat, a.lng];
-      coords[coords.length - 1] = [b.lat, b.lng];
-      p.coordsIn = coords;
+      // Punten net naast de weg schuiven op de weg; verder weg: een stukje naar het punt tekenen.
+      p.coordsIn = aansluiten(points.indexOf(p), coords);
       drawSegment(points.indexOf(p), coords, STYLE.route);
       updateInfo();
     }).catch(function (err) {
