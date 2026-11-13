@@ -21,6 +21,7 @@ button { font:600 15px system-ui; padding:11px; border-radius:6px; border:0; bac
 .rij { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid var(--line) }
 .rij .n { flex:1; min-width:0 } .rij small { color:var(--muted) }
 .rij button { background:transparent; color:var(--bad); border:1px solid var(--line); padding:6px 10px; font-size:13px }
+.rij button.link { color:var(--accent) }
 a { color:var(--accent) }
 </style>
 </head>
@@ -91,11 +92,20 @@ async function laad() {
     $("lijst").className = routes.length ? "" : "muted";
     $("lijst").innerHTML = routes.length ? routes.map((r) =>
       `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${String(r.km || 0).replace(".", ",")} km${r.haltes ? ` · ${r.haltes} haltes` : ""}</small></div>` +
+      `<button class="link" data-link="${esc(r.id)}" title="Link die deze route meteen in de boordcomputer opent">Link kopiëren</button>` +
       `<button data-id="${esc(r.id)}" data-naam="${esc(r.naam)}">Verwijderen</button></div>`).join("")
       : "Nog geen extra routes.";
   } catch (e) { $("lijst").innerHTML = naarLogin(e); }
 }
 $("lijst").onclick = async (ev) => {
+  const l = ev.target.closest("button[data-link]");
+  if (l) {
+    const url = `${location.origin}/boord/?route=${encodeURIComponent(l.dataset.link)}`;
+    try { await navigator.clipboard.writeText(url); l.textContent = "✓ Gekopieerd"; }
+    catch { prompt("Kopieer deze link:", url); }
+    setTimeout(() => { l.textContent = "Link kopiëren"; }, 2500);
+    return;
+  }
   const b = ev.target.closest("button[data-id]"); if (!b) return;
   if (!confirm(`"${b.dataset.naam}" verwijderen? Ze verdwijnt dan uit de boordcomputer.`)) return;
   try { await api({ actie: "verwijder", id: b.dataset.id }); laad(); } catch (e) { meld(naarLogin(e)); }

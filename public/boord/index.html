@@ -2325,18 +2325,25 @@ async function vrijLaadLijst() {
         `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">▶ ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
     : "";
 }
+async function vrijStartOpgeslagen(id) {
+  const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "laad", id }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.route) throw new Error(d.fout || "Kon deze route niet laden.");
+  const route = vrijUitGpx(d.route.gpx); route.naam = d.route.naam;
+  startVrijeRit(route);
+}
 $("vrijLijst").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-route]"); if (!b) return;
   $("vrijFout").textContent = ""; b.disabled = true;
-  try {
-    const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "laad", id: b.dataset.route }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.route) throw new Error(d.fout || "Kon deze route niet laden.");
-    const route = vrijUitGpx(d.route.gpx); route.naam = d.route.naam;
-    startVrijeRit(route);
-  } catch (er) { $("vrijFout").textContent = er.message || "Kon deze route niet laden."; }
+  try { await vrijStartOpgeslagen(b.dataset.route); }
+  catch (er) { $("vrijFout").textContent = er.message || "Kon deze route niet laden."; }
   finally { b.disabled = false; }
 });
+// Rechtstreekse link naar een opgeslagen route: /boord/?route=<id> opent ze meteen.
+try {
+  const rid = new URLSearchParams(location.search).get("route");
+  if (rid) setTimeout(() => vrijStartOpgeslagen(rid).catch(er => { $("vrijFout").textContent = er.message; $("vrijKaart").scrollIntoView(); }), 0);
+} catch {}
 vrijLaadLijst();
 // Vanuit de routetekenaar (zelfde site): ?vrij=1 rijdt meteen de route die daar klaargezet werd.
 try {
