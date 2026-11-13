@@ -233,6 +233,7 @@ async function apiNet(req, env, c) {
 // --- Vaste routes (rijden zonder dienstregeling) -------------------------------
 // Een route is een GPX (uit de routetekenaar of BRouter-web) met een naam, bv. "Omleiding Gent Zuid -
 // Gent Sint-Pieters". De boordcomputer toont de lijst en rijdt een gekozen route zonder uren.
+// Lezen is openbaar (zonder login); opslaan en verwijderen vraagt het recht Bouwer.
 // KV: "routemeta/<id>" = { id, naam, km, haltes, gewijzigd } (klein, voor de lijst), "route/<id>" = de GPX.
 const MAX_GPX = 3 * 1024 * 1024;
 async function apiRoute(req, env, c) {
@@ -240,7 +241,7 @@ async function apiRoute(req, env, c) {
   const b = await req.json().catch(() => ({}));
   const actie = b.actie || "lijst";
   if (actie === "lijst" || actie === "laad") {
-    if (!(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
+    // Openbaar: een chauffeur moet een route kunnen rijden zonder account (lijst en rechtstreekse link).
     if (actie === "laad") {
       const id = netId(b.id);
       const [meta, gpx] = await Promise.all([c.st.getJSONveilig(`routemeta/${id}`, null), c.st.get(`route/${id}`)]);

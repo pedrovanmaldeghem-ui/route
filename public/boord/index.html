@@ -1100,6 +1100,7 @@ async function startEigenOmloop(id, omloopKey, dag) {
     if (!ritten.length) { $("zoekfout").textContent = "Geen ritten voor deze omloop op de gekozen dag."; return; }
     const bi = eigenBusLees(id);
     OMLOOP = { afk: "eigen:" + id, key: omloopKey, ritten, dag: d, eigen: true, naam: r.net.naam || "Eigen net", routes: (proj.routes && typeof proj.routes === "object") ? proj.routes : {}, busnr: bi.busnr || "", busType: bi.type || "" };
+    { let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {} if (eerste) toonIntro(); }
     toonOverzicht();
   } catch { $("zoekfout").textContent = "Kon het eigen net niet laden."; }
 }
@@ -2294,6 +2295,9 @@ function startVrijeRit(route) {
     ritten: [["", "", van, naar, _fmtMin(n), _fmtMin(n + tot), [wd], route.km || 0, "vrij"]],
   };
   try { localStorage.setItem("vrijeRoute", JSON.stringify(route)); } catch {}
+  // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
+  let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
+  if (eerste) toonIntro();
   gaNaarRit(0, false);
 }
 function vrijToonLaatste() {
@@ -2403,7 +2407,15 @@ async function eigenInit() {
   };
   try {
     const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.json()).catch(() => ({}));
-    if (me && me.nodig && !me.ingelogd) { $("gate").classList.add("aan"); return; }
+    // Niet ingelogd: de omlopen van de netten blijven afgeschermd, maar routes zonder dienstregeling
+    // (lijst, GPX, rechtstreekse links) kan een chauffeur gewoon rijden zonder account.
+    if (me && me.nodig && !me.ingelogd) {
+      $("eigKaart").hidden = true;
+      const m = document.createElement("div"); m.className = "kaartje";
+      m.innerHTML = `<h2>Omloop kiezen</h2><p class="hint" style="margin:0">Voor de omlopen van de netten moet je <a href="/login?terug=/boord/" style="color:inherit">inloggen</a>. Een route zonder dienstregeling kan je hieronder ook zonder account rijden.</p>`;
+      $("eigKaart").after(m);
+      return;
+    }
   } catch {}
   eigVulDagen();
   const p = new URLSearchParams(location.search);
