@@ -19,6 +19,7 @@ assign validForCars        = true
 assign avoid_toll          = false  # %avoid_toll% | Avoid paid roads | boolean
 assign avoid_unpaved       = false  # %avoid_unpaved% | Avoid unpaved roads, if possible | boolean
 assign avoid_motorways     = false  # %avoid_motorways% | Avoid motorways | boolean
+assign door_knippen        = true   # %door_knippen% | Door knippen: straten met vehicle=no / motor_vehicle=no zonder bus=yes (met strafkost) | boolean
 
 assign add_beeline         = false  # %add_beeline% | Enable beeline on distant start/end points | boolean
 assign use_offroad         = false  # %use_offroad% | Enable additional roads | boolean
@@ -82,7 +83,15 @@ assign caraccess_auto
 
 # Bus: ook busbanen, busstraten en wegen die enkel voor bussen/openbaar vervoer open staan.
 assign busaccess = or highway=busway or bus=yes|designated psv=yes|designated
-assign caraccess = or caraccess_auto busaccess
+# Knip: een gewone straat die in OSM dicht is voor alle voertuigen (vehicle=no / motor_vehicle=no /
+# motorcar=no) zonder uitzondering voor bussen, terwijl bussen er vaak wel door mogen (bv. de Markt in
+# Oudenaarde). Met door_knippen rijden we erdoor, maar met een strafkost zodat zo'n stuk enkel gebruikt
+# wordt als het echt een omweg uitspaart. Paaltjes (barrier=bollard) en voetgangerszones blijven dicht.
+assign knipaccess = and door_knippen
+                    and highway=residential|living_street|unclassified|service|tertiary|secondary
+                        or vehicle=no or motor_vehicle=no motorcar=no
+assign caraccess = or caraccess_auto or busaccess knipaccess
+assign knip_penalty = if and knipaccess not or caraccess_auto busaccess then 2 else 0
 
 assign caraccess_destination
        switch motorcar=
@@ -113,7 +122,13 @@ assign initialcost =
 
 assign accessspeedlimit = if caraccess then 999 else 0
 
-assign isbadoneway = if reversedirection=yes then ( if oneway= then junction=roundabout else oneway=yes|true|1 ) else oneway=-1
+# Bus: eenrichtingsstraten met een busstrook in tegenrichting (busway=opposite_lane e.d.).
+# (oneway:bus=no / oneway:psv=no zitten niet in de BRouter-gegevens en kunnen we dus niet lezen.)
+assign busbeiderichtingen = or busway=opposite
+                            or busway:left=opposite
+                               busway:right=opposite
+assign isbadoneway = if busbeiderichtingen then false
+                     else if reversedirection=yes then ( if oneway= then junction=roundabout else oneway=yes|true|1 ) else oneway=-1
 assign onewayspeedlimit = if isbadoneway then 0 else 999
 
 assign islinktype = highway=motorway_link|trunk_link|primary_link|secondary_link|tertiary_link
@@ -244,6 +259,7 @@ assign costfactor =
   else if is_avoided_motorway then 10
   else min 9999
   add town_penalty
+  add knip_penalty
   add no_forest_penalty
   add no_river_penalty
   0

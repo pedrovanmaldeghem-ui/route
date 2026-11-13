@@ -54,3 +54,14 @@ npx wrangler dev
 workflow in Lijnkijker (`boord-sync.yml`) kopieert elke wijziging op `main` automatisch hierheen.
 Pas de boordcomputer dus in Lijnkijker aan, niet hier. Het verschil tussen de twee sites zit enkel in
 `public/boord/modus.js` (hier `"eigen"`) en `sw.js`, die niet gekopieerd worden.
+
+## Busnet (buslijnen volgen in de routetekenaar)
+
+`public/busnet/` bevat de echte busritten (vormlijnen) van De Lijn, TEC en MIVB, in tegels. De
+routetekenaar gebruikt ze voor **Buslijnen volgen** en **Buslijnen tonen**: zo volgt een route ook
+knippen, busstraten en eenrichtingsstraten waar bussen tegen de richting in rijden, ook als dat in
+OpenStreetMap ontbreekt. Vernieuwen (bv. na een nieuwe dienstregeling) vanuit een Lijnkijker-checkout:
+
+```bash
+python3 tools/busnet.py ../lijnkijker/public
+```
