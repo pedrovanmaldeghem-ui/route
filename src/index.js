@@ -28,6 +28,19 @@ const BENELUX = new Set(["BE", "NL", "LU"]);
 // serveert /x uit x.html, net als in Lijnkijker, zodat de oude links en QR-codes hier ook passen.)
 const ALIAS = { "/bouwer": "/eigennet", "/kaart": "/eigenkaart" };
 
+async function naarBrouterWeb(req, env, url) {
+  const z = Math.max(5, Math.min(19, parseInt(url.searchParams.get("z") || "", 10) || 14));
+  const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
+  const plek = Number.isFinite(lat) && Number.isFinite(lon) && lat && lon ? `${z}/${lat.toFixed(5)}/${lon.toFixed(5)}` : `${z}/51.03570/3.71060`;
+  let profiel = "car-vario";
+  try {
+    const brf = await (await env.ASSETS.fetch(new Request(new URL("/routetekenaar/bus.brf", url)))).text();
+    const d = await (await fetch("https://brouter.de/brouter/profile", { method: "POST", body: brf })).json();
+    if (d && d.profileid && !d.error) profiel = d.profileid;
+  } catch { /* BRouter onbereikbaar: dan het gewone autoprofiel */ }
+  return Response.redirect(`https://brouter.de/brouter-web/#map=${plek}/standard&profile=${encodeURIComponent(profiel)}`, 302);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -35,6 +48,10 @@ export default {
     if (env.GEO_OPEN !== "1" && land && !BENELUX.has(land)) {
       return new Response("Deze site is enkel toegankelijk vanuit de Benelux (België, Nederland, Luxemburg).", { status: 403, headers: { "content-type": "text/plain; charset=utf-8" } });
     }
+    // /brouter: BRouter-web openen met ons busprofiel al ingesteld. Het profiel wordt telkens vers naar de
+    // BRouter-server gestuurd (die bewaart opgeladen profielen maar tijdelijk) en we sturen door naar
+    // BRouter-web met profile=custom_…; optioneel ?z=&lat=&lon= voor de kaartplek.
+    if (url.pathname === "/brouter") return naarBrouterWeb(req, env, url);
     const handler = ROUTES[url.pathname];
     if (handler) {
       try { return await handler(req, await metGeheimen(env), context(env)); }

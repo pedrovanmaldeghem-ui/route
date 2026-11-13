@@ -62,13 +62,13 @@
     <h3>Route tekenen in BRouter-web</h3>
     <p style="margin:0 0 6px">BRouter-web heeft meer opties (tussenpunten slepen, hoogteprofiel, andere kaarten). Met ons busprofiel rijdt het ook over busbanen en busstraten.</p>
     <div class="rt-row">
-      <button type="button" id="rt-bw-kopieer" class="rt-primary">1. Busprofiel kopiëren</button>
-      <button type="button" id="rt-bw-open">2. BRouter-web openen</button>
+      <button type="button" id="rt-bw-open" class="rt-primary">BRouter-web openen met busprofiel</button>
+      <button type="button" id="rt-bw-kopieer">Busprofiel kopiëren</button>
       <a href="/routetekenaar/bus.brf" download="bus.brf" style="align-self:center">profiel downloaden</a>
     </div>
     <ol>
-      <li>Klik <b>Busprofiel kopiëren</b> en daarna <b>BRouter-web openen</b>. Die opent op dezelfde plek als hier.</li>
-      <li>Open in BRouter-web de zijbalk, tabblad <b>Profiel</b>. Selecteer de tekst daar, plak het busprofiel erover en klik <b>Upload</b>.</li>
+      <li>Klik <b>BRouter-web openen met busprofiel</b>. BRouter-web opent op dezelfde plek als hier, met het busprofiel al ingesteld (in de profielkeuze staat dan "custom_…").</li>
+      <li>Lukt dat niet, kies dan zelf: klik <b>Busprofiel kopiëren</b>, open in BRouter-web de zijbalk, tabblad <b>Profiel</b>, plak het busprofiel erover en klik <b>Upload</b>.</li>
       <li>Zet je startpunt, een tussenpunt in de busbaan van elk perron dat de bus moet aandoen, en je eindpunt.</li>
       <li>Exporteer als <b>GPX Track</b>. Die kan je hier openen met <b>GPX openen</b>, of rechtstreeks in de net-bouwer importeren.</li>
     </ol>
@@ -78,7 +78,7 @@
        or psv=yes|designated
        switch motorcar=
        ... (de rest ongewijzigd)</pre>
-    <p class="muted" style="margin:0;color:#52606d;font-size:12px">BRouter-web onthoudt het profiel niet. Je hoeft het niet zelf te bewaren: het staat altijd klaar via de kopieerknop hierboven.</p>
+    <p class="muted" style="margin:0;color:#52606d;font-size:12px">Vaste link om te delen of als bladwijzer: <a href="/brouter">route.lijnkijkernet.workers.dev/brouter</a>. Die zet het busprofiel telkens opnieuw klaar.</p>
     <div class="rt-row" style="justify-content:flex-end;margin-bottom:0"><button type="button" id="rt-bw-sluit">Sluiten</button></div>
   </div>
   <div id="rt-help">
@@ -541,12 +541,12 @@
     var knop = this;
     fetch(BUS_PROFILE_URL).then(function (r) { return r.text(); })
       .then(function (t) { return navigator.clipboard.writeText(t); })
-      .then(function () { knop.textContent = '✓ Gekopieerd'; setTimeout(function () { knop.textContent = '1. Busprofiel kopiëren'; }, 2500); })
+      .then(function () { knop.textContent = '✓ Gekopieerd'; setTimeout(function () { knop.textContent = 'Busprofiel kopiëren'; }, 2500); })
       .catch(function () { window.open(BUS_PROFILE_URL, '_blank'); });
   });
   el('rt-bw-open').addEventListener('click', function () {
     var c = map.getCenter();
-    window.open('https://brouter.de/brouter-web/#map=' + map.getZoom() + '/' + c.lat.toFixed(5) + '/' + c.lng.toFixed(5) + '/standard&profile=car-vario', '_blank', 'noopener');
+    window.open('/brouter?z=' + map.getZoom() + '&lat=' + c.lat.toFixed(5) + '&lon=' + c.lng.toFixed(5), '_blank', 'noopener');
   });
   el('rt-import').addEventListener('click', function () { el('rt-file').click(); });
   el('rt-file').addEventListener('change', function () {
