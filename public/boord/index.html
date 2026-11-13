@@ -310,6 +310,15 @@ body.donker #ovzkop .ovz-sp{color:var(--muted)}
 body.donker .ovz-rit.best{background:#1b2430; border-color:var(--lijn)}
 body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
 </style>
+<style>
+/* Geopend via een link naar een route (?route=… of ?vrij=1): meteen het opstartscherm, zonder het
+   beginscherm van de boordcomputer eronder te laten zien. */
+html.linkstart #setup{visibility:hidden}
+html.linkstart #intro{display:flex}
+</style>
+<script>
+try { const q = new URLSearchParams(location.search); if (q.get("route") || q.get("vrij") === "1") document.documentElement.classList.add("linkstart"); } catch {}
+</script>
 </head>
 <body>
 
@@ -2207,7 +2216,7 @@ pasThemaToe();
 
 /* ===== opstartscherm (logo + disclaimer/privacy) ===== */
 function toonIntro() { $("intro").classList.add("aan"); }
-$("introOk").onclick = () => { $("intro").classList.remove("aan"); try { sessionStorage.setItem("bp-intro", "1"); } catch {} };
+$("introOk").onclick = () => { $("intro").classList.remove("aan"); document.documentElement.classList.remove("linkstart"); try { sessionStorage.setItem("bp-intro", "1"); } catch {} };
 $("introHer").onclick = e => { e.preventDefault(); toonIntro(); };
 $("menuInfo").onclick = () => { menuSluit(); toonIntro(); };
 
@@ -2348,7 +2357,7 @@ $("vrijLijst").addEventListener("click", async (e) => {
 // Rechtstreekse link naar een opgeslagen route: /boord/?route=<id> opent ze meteen.
 try {
   const rid = new URLSearchParams(location.search).get("route");
-  if (rid) setTimeout(() => vrijStartOpgeslagen(rid).catch(er => { $("vrijFout").textContent = er.message; $("vrijKaart").scrollIntoView(); }), 0);
+  if (rid) setTimeout(() => vrijStartOpgeslagen(rid).catch(er => { document.documentElement.classList.remove("linkstart"); $("vrijFout").textContent = er.message; $("vrijKaart").hidden = false; $("vrijKaart").scrollIntoView(); }), 0);
 } catch {}
 vrijLaadLijst();
 // Vanuit de routetekenaar (zelfde site): ?vrij=1 rijdt meteen de route die daar klaargezet werd.
