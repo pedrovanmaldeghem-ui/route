@@ -147,6 +147,7 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker .tl li.nu{background:#13241a}
 #rij.donker .tl li.volgend::before{border-color:#fff}
 #rij.donker .tl li:active{background:#16202b}
+#rij.geenhaltes #tp{display:none} /* vrije rit zonder haltes: geen haltebalk, de kaart loopt door */
 #rij.donker #tp{background:#161b22; color:#f2f4f7; border-left-color:var(--lijn)}
 #rij.donker #tp::before{background:var(--bg); border-color:var(--muted)}
 #rij.donker #volgstrip{background:var(--paneel); color:var(--tekst); border-top-color:var(--lijn)}
@@ -1445,6 +1446,7 @@ function werkSnelmeterBij() {
 }
 function render() {
   if (!OMLOOP || !RIT) return;
+  $("rij").classList.toggle("geenhaltes", !!(OMLOOP.vrij && OMLOOP.geenHaltes && !_legeModus));
   werkSnelmeterBij();
   const row = OMLOOP.ritten[RITI];
   if (_legeModus) { $("blijn").textContent = "leeg"; $("blijn").style.background = "#667"; $("blijn").style.color = "#fff"; $("bintern").textContent = "↳"; $("bintern").style.display = ""; }
@@ -2299,14 +2301,15 @@ function vrijUitGpx(tekst, bestandsnaam) {
     const min = vol ? Math.max(1, Math.round((cum[vol.k] - cum[h.k]) / 1000 / 25 * 60)) : 0;
     return [h.naam, h.ll[0], h.ll[1], min];
   });
-  return { naam, haltes: hs, pts, km: cum[cum.length - 1] / 1000 };
+  const geenHaltes = !doc.getElementsByTagName("wpt").length;
+  return { naam, haltes: hs, pts, km: cum[cum.length - 1] / 1000, geenHaltes };
 }
-function startVrijeRit(route) {
+async function startVrijeRit(route) {
   const n = Math.ceil(nu()), tot = route.haltes.reduce((s, h) => s + (h[3] || 0), 0);
   const wd = new Date().getDay() || 7;
   const van = route.haltes[0][0], naar = route.haltes[route.haltes.length - 1][0];
   OMLOOP = {
-    afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, naam: route.naam,
+    afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, naam: route.naam, geenHaltes: !!route.geenHaltes,
     routes: { vrij: { haltes: route.haltes, pts: route.pts } }, busnr: "", busType: "",
     ritten: [["", "", van, naar, _fmtMin(n), _fmtMin(n + tot), [wd], route.km || 0, "vrij"]],
   };
@@ -2314,7 +2317,9 @@ function startVrijeRit(route) {
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
   let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
   if (eerste) toonIntro();
-  gaNaarRit(0, false);
+  await gaNaarRit(0, false);
+  // Zonder haltes heeft de haltelijst geen zin: meteen de kaart.
+  if (OMLOOP && OMLOOP.geenHaltes && RIT) $("btnKaart").click();
 }
 function vrijToonLaatste() {
   let r = null; try { r = JSON.parse(localStorage.getItem("vrijeRoute") || "null"); } catch {}
