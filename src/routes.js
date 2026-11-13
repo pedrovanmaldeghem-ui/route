@@ -233,7 +233,8 @@ async function apiNet(req, env, c) {
 // --- Vaste routes (rijden zonder dienstregeling) -------------------------------
 // Een route is een GPX (uit de routetekenaar of BRouter-web) met een naam, bv. "Omleiding Gent Zuid -
 // Gent Sint-Pieters". De boordcomputer toont de lijst en rijdt een gekozen route zonder uren.
-// Lezen is openbaar (zonder login); opslaan en verwijderen vraagt het recht Bouwer.
+// Eén route laden via haar (lange, willekeurige) id kan zonder login: dat is de link voor de chauffeur.
+// De lijst vraagt een login (recht Kijken); opslaan en verwijderen het recht Bouwer.
 // KV: "routemeta/<id>" = { id, naam, km, haltes, gewijzigd } (klein, voor de lijst), "route/<id>" = de GPX.
 const MAX_GPX = 3 * 1024 * 1024;
 async function apiRoute(req, env, c) {
@@ -241,7 +242,8 @@ async function apiRoute(req, env, c) {
   const b = await req.json().catch(() => ({}));
   const actie = b.actie || "lijst";
   if (actie === "lijst" || actie === "laad") {
-    // Openbaar: een chauffeur moet een route kunnen rijden zonder account (lijst en rechtstreekse link).
+    // Een route laden kan zonder login (de rechtstreekse link voor de chauffeur); de lijst niet.
+    if (actie === "lijst" && !(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
     if (actie === "laad") {
       const id = netId(b.id);
       const [meta, gpx] = await Promise.all([c.st.getJSONveilig(`routemeta/${id}`, null), c.st.get(`route/${id}`)]);
@@ -269,7 +271,7 @@ async function apiRoute(req, env, c) {
         if (m && String(m.naam).toLowerCase() === naam.toLowerCase()) { id = m.id; break; }
       }
     }
-    if (!id) id = "rt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    if (!id) id = "rt_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20); // niet te raden
     const meta = { id, naam, km: Math.round((Number(b.km) || 0) * 100) / 100, haltes: Math.max(0, parseInt(b.haltes, 10) || 0), gewijzigd: Date.now() };
     await c.st.set(`route/${id}`, gpx);
     await c.st.setJSON(`routemeta/${id}`, meta);

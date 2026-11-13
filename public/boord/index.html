@@ -2303,6 +2303,7 @@ function startVrijeRit(route) {
 function vrijToonLaatste() {
   let r = null; try { r = JSON.parse(localStorage.getItem("vrijeRoute") || "null"); } catch {}
   const b = $("vrijLaatste");
+  if (window._vrijEnkelLink) { b.style.display = "none"; return; }
   if (r && r.haltes && r.pts) { b.style.display = ""; b.textContent = `▶ Opnieuw rijden: ${r.naam}`; b.onclick = () => startVrijeRit(r); }
   else b.style.display = "none";
 }
@@ -2318,12 +2319,13 @@ vrijToonLaatste();
 // Vaste routes die op de site bewaard zijn (routetekenaar → "Opslaan op de site"). Bestaat /api/route
 // niet (zoals in Lijnkijker) of heb je geen toegang, dan blijft de lijst gewoon leeg.
 async function vrijLaadLijst() {
-  const box = $("vrijLijst"); if (!box) return;
+  const box = $("vrijLijst"); if (!box || window._vrijEnkelLink) return;
   let routes = [];
   try {
     const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "lijst" }) });
     if (r.ok) routes = (await r.json()).routes || [];
   } catch {}
+  if (window._vrijEnkelLink) return; // intussen in link-modus gezet (niet ingelogd)
   box.innerHTML = routes.length
     ? `<p class="hint" style="margin:0 0 6px">Klaargezette routes:</p>` + routes.map(x =>
         `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">▶ ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
@@ -2412,8 +2414,16 @@ async function eigenInit() {
     if (me && me.nodig && !me.ingelogd) {
       $("eigKaart").hidden = true;
       const m = document.createElement("div"); m.className = "kaartje";
-      m.innerHTML = `<h2>Omloop kiezen</h2><p class="hint" style="margin:0">Voor de omlopen van de netten moet je <a href="/login?terug=/boord/" style="color:inherit">inloggen</a>. Een route zonder dienstregeling kan je hieronder ook zonder account rijden.</p>`;
+      m.innerHTML = `<h2>Omloop kiezen</h2><p class="hint" style="margin:0">Voor de omlopen van de netten moet je <a href="/login?terug=/boord/" style="color:inherit">inloggen</a>. Een route zonder dienstregeling open je zonder account via de link die je kreeg.</p>`;
       $("eigKaart").after(m);
+      // Zonder login enkel routes via een rechtstreekse link: geen lijst, geen eigen GPX.
+      if (!new URLSearchParams(location.search).get("route")) $("vrijKaart").hidden = true;
+      else {
+        window._vrijEnkelLink = true;
+        $("vrijKies").style.display = "none"; vrijToonLaatste();
+        $("vrijKaart").querySelector("p.hint").style.display = "none";
+        $("vrijLijst").innerHTML = `<button class="knop" data-route="${esc(new URLSearchParams(location.search).get("route"))}" style="width:100%">▶ Route opnieuw starten</button>`;
+      }
       return;
     }
   } catch {}
