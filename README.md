@@ -12,9 +12,11 @@ een eigen opslag en een eigen login.
 | `/eigenkaart?net=…` | Live kaart met de bussen die hun positie delen |
 | `/haltebord?net=…` | Printbare halteborden met QR naar de live doorkomsten |
 | `/login` | Inloggen of een account aanvragen |
+| `/routetekenaar` | Routes tekenen (busprofiel), als GPX downloaden of **op de site opslaan** |
 | `/admin` | Accounts goedkeuren, rechten geven, netten overnemen uit Lijnkijker |
 
-Opslag: KV `EIGENNET` (netten onder `eigennet:net/<id>`, accounts onder `auth:`) en D1 `DB`
+Opslag: KV `EIGENNET` (netten onder `eigennet:net/<id>`, vaste routes onder `eigennet:route/<id>` en
+`eigennet:routemeta/<id>`, accounts onder `auth:`) en D1 `DB`
 (tabel `eigenpos`, de laatst gemelde positie per bus; wordt vanzelf aangemaakt).
 
 ## Uitrollen in het nieuwe Cloudflare-account

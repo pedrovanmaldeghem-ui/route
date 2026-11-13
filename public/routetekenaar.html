@@ -31,7 +31,13 @@
   .rt-popup .rt-row { display: flex; gap: 6px; margin-top: 6px; }
   #rt-app a.rt-terug { color: #1d4ed8; text-decoration: none; font-weight: 600; }
   #rt-bw { display: none; position: absolute; z-index: 1000; top: 100px; right: 12px; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 130px); overflow: auto; background: #fff; border: 1px solid #c3cad3; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 14px; }
-  #rt-bw.aan { display: block; }
+  #rt-bw.aan, #rt-op.aan { display: block; }
+  #rt-op { display: none; position: absolute; z-index: 1000; top: 100px; right: 12px; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 130px); overflow: auto; background: #fff; border: 1px solid #c3cad3; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 14px; }
+  #rt-op h3 { margin: 0 0 6px; font-size: 15px; }
+  .rt-oprij { display: flex; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eef1f5; }
+  .rt-oprij .rt-opnaam { flex: 1; min-width: 0; }
+  .rt-oprij small { color: #52606d; }
+  #rt-opmelding { color: #b91c1c; margin: 6px 0; }
   #rt-bw h3 { margin: 0 0 6px; font-size: 15px; }
   #rt-bw ol { padding-left: 20px; margin: 6px 0; line-height: 1.5; }
   #rt-bw pre { background: #f5f7fa; border: 1px solid #d9dee5; border-radius: 6px; padding: 6px 8px; font-size: 12px; overflow-x: auto; }
@@ -54,6 +60,8 @@
     <input type="file" id="rt-file" accept=".gpx,application/gpx+xml" hidden>
     <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
     <button type="button" id="rt-brouter" title="Open dezelfde kaartplek in BRouter-web, met uitleg en het busprofiel">BRouter-web…</button>
+    <button type="button" id="rt-opslaan" title="Deze route op de site bewaren, zodat ze in de boordcomputer klaarstaat">Opslaan op de site</button>
+    <button type="button" id="rt-opgeslagen" title="Routes die op de site bewaard zijn">Opgeslagen routes…</button>
     <button type="button" id="rt-rijden" title="Deze route rijden in de boordcomputer, zonder dienstregeling">Rijden in boordcomputer</button>
     <button type="button" id="rt-export" class="rt-primary">Download GPX</button>
     <span id="rt-info">0,00 km</span>
@@ -81,6 +89,13 @@
        ... (de rest ongewijzigd)</pre>
     <p class="muted" style="margin:0;color:#52606d;font-size:12px">Vaste link om te delen of als bladwijzer: <a href="/brouter">route.lijnkijkernet.workers.dev/brouter</a>. Die zet het busprofiel telkens opnieuw klaar.</p>
     <div class="rt-row" style="justify-content:flex-end;margin-bottom:0"><button type="button" id="rt-bw-sluit">Sluiten</button></div>
+  </div>
+  <div id="rt-op" role="dialog" aria-label="Opgeslagen routes">
+    <h3>Opgeslagen routes</h3>
+    <p style="margin:0 0 6px;color:#52606d">Deze routes staan in de boordcomputer klaar onder "Route rijden zonder dienstregeling". Een route opslaan met dezelfde naam overschrijft ze.</p>
+    <div id="rt-opmelding"></div>
+    <div id="rt-oplijst">Laden…</div>
+    <div class="rt-row" style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" id="rt-op-sluit">Sluiten</button></div>
   </div>
   <div id="rt-help">
     Klik op de kaart om punten toe te voegen. <b>Weg volgen</b> volgt de weg, <b>Vrij tekenen</b> trekt een rechte lijn (handig over busperrons).
@@ -420,6 +435,65 @@
     location.href = '/boord/?vrij=1';
   }
 
+  // ---- Routes op de site bewaren (voor de boordcomputer) ----------------
+  function routeApi(body) {
+    return fetch('/api/route', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) { var e = new Error(d.fout || ('Fout ' + r.status)); e.status = r.status; throw e; } return d; }); });
+  }
+  function routeKm() {
+    var m = 0;
+    for (var i = 1; i < points.length; i++) { var c = points[i].coordsIn || []; for (var j = 1; j < c.length; j++) m += map.distance(c[j - 1], c[j]); }
+    return m / 1000;
+  }
+  function opslaan() {
+    if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
+    var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
+    if (busy) { alert('De route wordt nog berekend. Probeer het zo meteen opnieuw.'); return; }
+    var naam = el('rt-name').value.trim();
+    if (!naam || naam === 'Nieuwe route') {
+      naam = (prompt('Naam van de route, zoals de chauffeur ze in de boordcomputer ziet:', naam === 'Nieuwe route' ? '' : naam) || '').trim();
+      if (!naam) return;
+      el('rt-name').value = naam;
+    }
+    var knop = el('rt-opslaan');
+    knop.disabled = true; knop.textContent = 'Bezig…';
+    routeApi({ actie: 'bewaar', naam: naam, gpx: buildGpx(), km: routeKm(), haltes: points.filter(function (p) { return p.stop; }).length })
+      .then(function () { knop.textContent = '✓ Opgeslagen'; })
+      .catch(function (e) {
+        knop.textContent = 'Opslaan op de site';
+        if (e.status === 401 || e.status === 403) { if (confirm(e.message + '\n\nNu inloggen? (Je route blijft hier niet bewaard, download ze eerst als GPX.)')) location.href = '/login?terug=/routetekenaar'; }
+        else alert('Opslaan mislukt: ' + e.message);
+      })
+      .then(function () { knop.disabled = false; setTimeout(function () { knop.textContent = 'Opslaan op de site'; }, 2500); });
+  }
+  function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function toonOpgeslagen() {
+    el('rt-op').classList.add('aan'); el('rt-bw').classList.remove('aan');
+    el('rt-opmelding').textContent = ''; el('rt-oplijst').textContent = 'Laden…';
+    routeApi({ actie: 'lijst' }).then(function (d) {
+      var r = d.routes || [];
+      el('rt-oplijst').innerHTML = r.length ? r.map(function (x) {
+        return '<div class="rt-oprij"><div class="rt-opnaam"><b>' + esc(x.naam) + '</b><br><small>' + String(x.km || 0).replace('.', ',') + ' km · ' + (x.haltes || 0) + ' haltes</small></div>' +
+          '<button type="button" data-a="open" data-id="' + esc(x.id) + '">Bewerken</button>' +
+          '<button type="button" data-a="rij" data-id="' + esc(x.id) + '">Rijden</button>' +
+          '<button type="button" data-a="weg" data-id="' + esc(x.id) + '" data-naam="' + esc(x.naam) + '" title="Verwijderen">✕</button></div>';
+      }).join('') : 'Nog geen routes opgeslagen. Teken een route en klik <b>Opslaan op de site</b>.';
+    }).catch(function (e) { el('rt-oplijst').textContent = ''; el('rt-opmelding').textContent = e.message; });
+  }
+  el('rt-oplijst').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-a]'); if (!b) return;
+    var id = b.dataset.id;
+    if (b.dataset.a === 'weg') {
+      if (!confirm('Route "' + b.dataset.naam + '" verwijderen? Ze verdwijnt dan ook uit de boordcomputer.')) return;
+      routeApi({ actie: 'verwijder', id: id }).then(toonOpgeslagen).catch(function (e) { el('rt-opmelding').textContent = e.message; });
+      return;
+    }
+    routeApi({ actie: 'laad', id: id }).then(function (d) {
+      if (b.dataset.a === 'rij') { localStorage.setItem('vrijeGpx', d.route.gpx); location.href = '/boord/?vrij=1'; return; }
+      importGpx(d.route.gpx); el('rt-name').value = d.route.naam; el('rt-op').classList.remove('aan');
+    }).catch(function (e) { el('rt-opmelding').textContent = e.message; });
+  });
+
   function exportGpx() {
     if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
     var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
@@ -544,6 +618,9 @@
   });
   el('rt-export').addEventListener('click', exportGpx);
   el('rt-rijden').addEventListener('click', rijden);
+  el('rt-opslaan').addEventListener('click', opslaan);
+  el('rt-opgeslagen').addEventListener('click', toonOpgeslagen);
+  el('rt-op-sluit').addEventListener('click', function () { el('rt-op').classList.remove('aan'); });
   el('rt-bus').addEventListener('click', busToggle);
   // BRouter-web: paneel met uitleg, busprofiel naar het klembord en dezelfde kaartplek openen.
   el('rt-brouter').addEventListener('click', function () { el('rt-bw').classList.toggle('aan'); });

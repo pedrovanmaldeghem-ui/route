@@ -230,6 +230,58 @@ async function apiNet(req, env, c) {
   return json({ fout: "onbekende actie" }, 400);
 }
 
+// --- Vaste routes (rijden zonder dienstregeling) -------------------------------
+// Een route is een GPX (uit de routetekenaar of BRouter-web) met een naam, bv. "Omleiding Gent Zuid -
+// Gent Sint-Pieters". De boordcomputer toont de lijst en rijdt een gekozen route zonder uren.
+// KV: "routemeta/<id>" = { id, naam, km, haltes, gewijzigd } (klein, voor de lijst), "route/<id>" = de GPX.
+const MAX_GPX = 3 * 1024 * 1024;
+async function apiRoute(req, env, c) {
+  if (req.method !== "POST") return json({ fout: "methode" }, 405);
+  const b = await req.json().catch(() => ({}));
+  const actie = b.actie || "lijst";
+  if (actie === "lijst" || actie === "laad") {
+    if (!(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
+    if (actie === "laad") {
+      const id = netId(b.id);
+      const [meta, gpx] = await Promise.all([c.st.getJSONveilig(`routemeta/${id}`, null), c.st.get(`route/${id}`)]);
+      if (!meta || !gpx) return json({ fout: "Route niet gevonden." }, 404);
+      return json({ route: { ...meta, gpx } });
+    }
+    const { blobs } = await c.st.list({ prefix: "routemeta/" });
+    const routes = (await Promise.all(blobs.map(({ key }) => c.st.getJSONveilig(key, null)))).filter(Boolean);
+    routes.sort((a, z) => String(a.naam).localeCompare(String(z.naam), "nl"));
+    return json({ routes });
+  }
+  if (!(await heeftRecht(req, env, c, "bouwer", b.beheer))) return json({ fout: "Log in met een account met het recht Bouwer om routes op te slaan." }, 401);
+  if (actie === "bewaar") {
+    const naam = String(b.naam || "").trim().slice(0, 120);
+    const gpx = String(b.gpx || "");
+    if (!naam) return json({ fout: "Geef de route een naam." }, 400);
+    if (!/<trkpt|<rtept/.test(gpx)) return json({ fout: "Dit is geen route (geen trackpunten)." }, 400);
+    if (gpx.length > MAX_GPX) return json({ fout: "Deze route is te groot." }, 400);
+    // Zelfde naam = dezelfde route overschrijven, tenzij er een id meekomt.
+    let id = netId(b.id);
+    if (!id) {
+      const { blobs } = await c.st.list({ prefix: "routemeta/" });
+      for (const { key } of blobs) {
+        const m = await c.st.getJSONveilig(key, null);
+        if (m && String(m.naam).toLowerCase() === naam.toLowerCase()) { id = m.id; break; }
+      }
+    }
+    if (!id) id = "rt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const meta = { id, naam, km: Math.round((Number(b.km) || 0) * 100) / 100, haltes: Math.max(0, parseInt(b.haltes, 10) || 0), gewijzigd: Date.now() };
+    await c.st.set(`route/${id}`, gpx);
+    await c.st.setJSON(`routemeta/${id}`, meta);
+    return json({ ok: true, route: meta });
+  }
+  if (actie === "verwijder") {
+    const id = netId(b.id);
+    await Promise.all([c.st.delete(`route/${id}`).catch(() => {}), c.st.delete(`routemeta/${id}`).catch(() => {})]);
+    return json({ ok: true });
+  }
+  return json({ fout: "onbekende actie" }, 400);
+}
+
 // --- Live busposities ---------------------------------------------------------
 // "post" (chauffeur, ingelogd) bewaart de laatste positie in D1; "lees" geeft de verse posities —
 // openbaar als het net 'publiekHaltebord' aan heeft staan, anders enkel met het recht 'kijken'.
@@ -278,6 +330,7 @@ export const ROUTES = {
   "/api/admin": authAdmin,
   "/api/net": apiNet,
   "/api/eigenpos": apiEigenpos,
+  "/api/route": apiRoute,
   "/api/omloopgebruik": apiStil,
   "/api/melden": apiStil,
 };

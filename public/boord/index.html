@@ -330,6 +330,7 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
   <div class="kaartje" id="vrijKaart">
     <h2>Route rijden zonder dienstregeling</h2>
     <p class="hint" style="margin:0 0 8px">Open een GPX-route (bv. uit de routetekenaar of BRouter-web). Je krijgt de route, de haltes en het volgen op de kaart, zonder uren en zonder voor/achter op schema.</p>
+    <div id="vrijLijst"></div>
     <input type="file" id="vrijGpx" accept=".gpx,application/gpx+xml" hidden>
     <button class="knop" id="vrijKies" style="width:100%">📂 GPX-route openen</button>
     <button class="knop" id="vrijLaatste" style="width:100%;margin-top:8px;display:none"></button>
@@ -2050,14 +2051,14 @@ $("ovzlijst").addEventListener("click", e => {
   const b = e.target.closest("button[data-riti]"); if (b) gaNaarRit(+b.dataset.riti, true);
 });
 $("ovzStart").onclick = () => gaNaarRit(_ovzBest, true);
-$("ovzTerug").onclick = () => { stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); };
+$("ovzTerug").onclick = () => { stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); vrijToonLaatste(); vrijLaadLijst(); };
 $("menu").addEventListener("click", e => {
   const tr = e.target.closest("button[data-tref]"); if (tr) { startOmloop(_treffers[+tr.dataset.tref]); return; }
   const ri = e.target.closest("button[data-riti]"); if (ri) { menuSluit(); gaNaarRit(+ri.dataset.riti, true); }
 });
 $("menuSluit").onclick = menuSluit;
 $("menuOverzicht").onclick = () => { menuSluit(); toonOverzicht(); };
-$("menuTerug").onclick = () => { menuSluit(); stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); };
+$("menuTerug").onclick = () => { menuSluit(); stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); vrijToonLaatste(); vrijLaadLijst(); };
 $("btnLijst").onclick = () => { $("lijstwrap").style.display = ""; $("kaart").style.display = "none"; $("volgstrip").style.display = ""; $("navbaan").classList.remove("aan"); $("snelmeter").classList.remove("aan"); $("btnLijst").setAttribute("aria-pressed", "true"); $("btnKaart").setAttribute("aria-pressed", "false"); };
 $("btnKaart").onclick = () => { $("lijstwrap").style.display = "none"; $("kaart").style.display = "block"; $("volgstrip").style.display = "none"; $("snelmeter").classList.add("aan"); $("btnLijst").setAttribute("aria-pressed", "false"); $("btnKaart").setAttribute("aria-pressed", "true"); maakKaart(); setTimeout(() => kaart && kaart.invalidateSize(), 60); if (laatsteSnap) { zetMarker(); if (navAan) updateNavBanner(laatsteSnap.s); } };
 $("tl").addEventListener("click", e => {
@@ -2241,6 +2242,33 @@ $("vrijGpx").onchange = async (e) => {
   catch (er) { $("vrijFout").textContent = er.message || "Kon deze route niet openen."; }
 };
 vrijToonLaatste();
+// Vaste routes die op de site bewaard zijn (routetekenaar → "Opslaan op de site"). Bestaat /api/route
+// niet (zoals in Lijnkijker) of heb je geen toegang, dan blijft de lijst gewoon leeg.
+async function vrijLaadLijst() {
+  const box = $("vrijLijst"); if (!box) return;
+  let routes = [];
+  try {
+    const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "lijst" }) });
+    if (r.ok) routes = (await r.json()).routes || [];
+  } catch {}
+  box.innerHTML = routes.length
+    ? `<p class="hint" style="margin:0 0 6px">Klaargezette routes:</p>` + routes.map(x =>
+        `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">▶ ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
+    : "";
+}
+$("vrijLijst").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-route]"); if (!b) return;
+  $("vrijFout").textContent = ""; b.disabled = true;
+  try {
+    const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "laad", id: b.dataset.route }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.route) throw new Error(d.fout || "Kon deze route niet laden.");
+    const route = vrijUitGpx(d.route.gpx); route.naam = d.route.naam;
+    startVrijeRit(route);
+  } catch (er) { $("vrijFout").textContent = er.message || "Kon deze route niet laden."; }
+  finally { b.disabled = false; }
+});
+vrijLaadLijst();
 // Vanuit de routetekenaar (zelfde site): ?vrij=1 rijdt meteen de route die daar klaargezet werd.
 try {
   if (new URLSearchParams(location.search).get("vrij") === "1") {
