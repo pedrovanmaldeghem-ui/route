@@ -93,6 +93,11 @@
   <div id="rt-op" role="dialog" aria-label="Opgeslagen routes">
     <h3>Opgeslagen routes</h3>
     <p style="margin:0 0 6px;color:#52606d">Deze routes staan in de boordcomputer klaar onder "Route rijden zonder dienstregeling". Een route opslaan met dezelfde naam overschrijft ze.</p>
+    <div style="background:#f5f7fa;border:1px solid #d9dee5;border-radius:6px;padding:8px 10px;margin:6px 0">
+      <b>Getekend in BRouter-web?</b> Exporteer daar als <b>GPX Track</b> (vink <i>waypoints</i> aan als je haltes wil) en zet het bestand hier rechtstreeks bij de routes.
+      <div style="margin-top:6px"><button type="button" id="rt-op-gpx" class="rt-primary">GPX-bestanden toevoegen</button>
+      <input type="file" id="rt-op-file" accept=".gpx,application/gpx+xml" multiple hidden></div>
+    </div>
     <div id="rt-opmelding"></div>
     <div id="rt-oplijst">Laden…</div>
     <div class="rt-row" style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" id="rt-op-sluit">Sluiten</button></div>
@@ -469,7 +474,7 @@
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function toonOpgeslagen() {
     el('rt-op').classList.add('aan'); el('rt-bw').classList.remove('aan');
-    el('rt-opmelding').textContent = ''; el('rt-oplijst').textContent = 'Laden…';
+    el('rt-oplijst').textContent = 'Laden…';
     routeApi({ actie: 'lijst' }).then(function (d) {
       var r = d.routes || [];
       el('rt-oplijst').innerHTML = r.length ? r.map(function (x) {
@@ -478,8 +483,35 @@
           '<button type="button" data-a="rij" data-id="' + esc(x.id) + '">Rijden</button>' +
           '<button type="button" data-a="weg" data-id="' + esc(x.id) + '" data-naam="' + esc(x.naam) + '" title="Verwijderen">✕</button></div>';
       }).join('') : 'Nog geen routes opgeslagen. Teken een route en klik <b>Opslaan op de site</b>.';
+      el('rt-opmelding').textContent = '';
     }).catch(function (e) { el('rt-oplijst').textContent = ''; el('rt-opmelding').textContent = e.message; });
   }
+  // GPX-bestanden (bv. uit BRouter-web) meteen als vaste route bewaren, zonder ze eerst te openen.
+  // De naam vragen we per bestand; standaard de bestandsnaam (BRouter noemt zijn track "brouter_…").
+  function gpxInfo(tekst) {
+    var doc = new DOMParser().parseFromString(tekst, 'application/xml');
+    var tp = Array.prototype.slice.call(doc.getElementsByTagName('trkpt'));
+    if (tp.length < 2) tp = Array.prototype.slice.call(doc.getElementsByTagName('rtept'));
+    if (doc.getElementsByTagName('parsererror').length || tp.length < 2) return null;
+    var m = 0, vorige = null;
+    tp.forEach(function (t) { var ll = L.latLng(parseFloat(t.getAttribute('lat')), parseFloat(t.getAttribute('lon'))); if (vorige) m += vorige.distanceTo(ll); vorige = ll; });
+    return { km: m / 1000, haltes: doc.getElementsByTagName('wpt').length };
+  }
+  el('rt-op-gpx').addEventListener('click', function () { el('rt-op-file').click(); });
+  el('rt-op-file').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files || []); this.value = '';
+    var fouten = [];
+    files.reduce(function (keten, f) {
+      return keten.then(function () { return f.text(); }).then(function (tekst) {
+        var info = gpxInfo(tekst);
+        if (!info) { fouten.push(f.name + ': geen route gevonden'); return; }
+        var naam = (prompt('Naam voor ' + f.name + ' (zo ziet de chauffeur ze in de boordcomputer):', f.name.replace(/\.gpx$/i, '')) || '').trim();
+        if (!naam) return;
+        return routeApi({ actie: 'bewaar', naam: naam, gpx: tekst, km: info.km, haltes: info.haltes })
+          .catch(function (e) { fouten.push(f.name + ': ' + e.message); });
+      });
+    }, Promise.resolve()).then(function () { toonOpgeslagen(); setTimeout(function () { el('rt-opmelding').textContent = fouten.join(' · '); }, 300); });
+  });
   el('rt-oplijst').addEventListener('click', function (ev) {
     var b = ev.target.closest('button[data-a]'); if (!b) return;
     var id = b.dataset.id;
