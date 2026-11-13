@@ -54,6 +54,7 @@
     <input type="file" id="rt-file" accept=".gpx,application/gpx+xml" hidden>
     <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
     <button type="button" id="rt-brouter" title="Open dezelfde kaartplek in BRouter-web, met uitleg en het busprofiel">BRouter-web…</button>
+    <button type="button" id="rt-rijden" title="Deze route rijden in de boordcomputer, zonder dienstregeling">Rijden in boordcomputer</button>
     <button type="button" id="rt-export" class="rt-primary">Download GPX</button>
     <span id="rt-info">0,00 km</span>
   </div>
@@ -410,6 +411,15 @@
     return out.join('\n');
   }
 
+  // Route meteen rijden in de boordcomputer (zelfde site): de GPX gaat via localStorage mee.
+  function rijden() {
+    if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
+    var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
+    if (busy) { alert('De route wordt nog berekend. Probeer het zo meteen opnieuw.'); return; }
+    try { localStorage.setItem('vrijeGpx', buildGpx()); } catch (e) { alert('Kon de route niet doorgeven aan de boordcomputer.'); return; }
+    location.href = '/boord/?vrij=1';
+  }
+
   function exportGpx() {
     if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
     var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
@@ -533,6 +543,7 @@
     if (!points.length || confirm('Hele route wissen?')) clearAll();
   });
   el('rt-export').addEventListener('click', exportGpx);
+  el('rt-rijden').addEventListener('click', rijden);
   el('rt-bus').addEventListener('click', busToggle);
   // BRouter-web: paneel met uitleg, busprofiel naar het klembord en dezelfde kaartplek openen.
   el('rt-brouter').addEventListener('click', function () { el('rt-bw').classList.toggle('aan'); });

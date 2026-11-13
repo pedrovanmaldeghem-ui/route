@@ -327,6 +327,14 @@ body.donker .ovz-rit.leegrit .rl{color:var(--muted)}
     <div class="rij" style="gap:8px;flex-wrap:nowrap;margin-bottom:10px"><label for="eigoml" style="min-width:56px">Omloop</label><select id="eigoml" style="flex:1"></select></div>
     <button class="knop primair" id="eigOpen" style="width:100%">Omloop openen</button>
   </div>
+  <div class="kaartje" id="vrijKaart">
+    <h2>Route rijden zonder dienstregeling</h2>
+    <p class="hint" style="margin:0 0 8px">Open een GPX-route (bv. uit de routetekenaar of BRouter-web). Je krijgt de route, de haltes en het volgen op de kaart, zonder uren en zonder voor/achter op schema.</p>
+    <input type="file" id="vrijGpx" accept=".gpx,application/gpx+xml" hidden>
+    <button class="knop" id="vrijKies" style="width:100%">📂 GPX-route openen</button>
+    <button class="knop" id="vrijLaatste" style="width:100%;margin-top:8px;display:none"></button>
+    <p id="vrijFout" class="fout" style="margin:8px 0 0"></p>
+  </div>
   <div class="kaartje" id="delijnKaart">
     <h2>Omloop ingeven</h2>
     <div class="rij" style="gap:8px">
@@ -728,13 +736,13 @@ function bouwRitEigen(row) {
   const dm = _toMin(vert); let t = (dm != null ? dm : 0);
   const halten = hs.map((h, i) => {
     const tm = (i === 0 && dm != null) ? dm : t;
-    const o = { tijd: _fmtMin(tm), naam: h[0], lat: h[1], lon: h[2], min: tm };
+    const o = { tijd: OMLOOP.vrij ? "" : _fmtMin(tm), naam: h[0], lat: h[1], lon: h[2], min: tm };
     t = tm + (h[3] || 0);
     return o;
   });
   // Eindhalte op het opgeslagen aankomstuur zetten (consistent met het overzicht en de lijst).
   const am = _toMin(aankomst);
-  if (am != null && halten.length) { const L = halten[halten.length - 1]; L.tijd = aankomst; L.min = am; }
+  if (am != null && halten.length) { const L = halten[halten.length - 1]; L.tijd = OMLOOP.vrij ? "" : aankomst; L.min = am; }
   const pts = (route.pts || []).filter(p => Array.isArray(p) && p[0] != null).map(p => [p[0], p[1]]);
   const geo = bouwGeo(halten, pts);
   return { rit, d0, van, naar, vert, aankomst, halten, pts, geo };
@@ -1256,7 +1264,7 @@ function startRijden() {
 function tekenLijst() {
   if (!RIT) { $("tl").innerHTML = `<li><span class="naam">Geen routegegevens voor deze rit.</span></li>`; return; }
   $("tl").innerHTML = RIT.halten.map((h, i) =>
-    `<li data-i="${i}"><span class="t">${esc(h.tijd || "–")}</span><span class="naam">${esc(h.naam)}</span></li>`
+    `<li data-i="${i}"><span class="t">${esc(h.tijd || (OMLOOP && OMLOOP.vrij ? "" : "–"))}</span><span class="naam">${esc(h.naam)}</span></li>`
   ).join("");
 }
 // Onderaan: aankomst van déze rit (begin van je pauze) + vertrek/lijn/pauze van de volgende rit.
@@ -1272,6 +1280,10 @@ function vulVolgStrip() {
       hl += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(vlg[4] || "--:--")}</span><span class="vs-n">${badge} ${esc(vlg[2] || "")}</span></div>`;
     }
     strip.innerHTML = hl; return;
+  }
+  if (OMLOOP.vrij) {
+    strip.innerHTML = `<div class="vs-rij"><span class="vs-n">${esc(RIT.naar || "")}</span></div><div class="vs-rij"><span class="vs-n" style="opacity:.75">Vrije rit, zonder dienstregeling</span></div>`;
+    return;
   }
   const row = OMLOOP.ritten[RITI], vol = OMLOOP.ritten[RITI + 1];
   // Regel 1: aankomsttijd + eindhalte van deze rit (zonder het woord 'aankomst').
@@ -1322,6 +1334,8 @@ function kiesVertrekHalte(i) {
   else if (kaart && laatsteSnap) zetMarker();
 }
 function zetKop(klasse, afwTekst, afwSub) {
+  // Vrije rit: geen schema, dus geen kleur en geen afwijking (een echte melding blijft wel staan).
+  if (OMLOOP && OMLOOP.vrij && !_legeModus) { klasse = "wit"; if (!afwSub) afwTekst = ""; }
   const k = $("kop"); k.className = klasse;
   // Android: laat de statusbalk meelopen met de kopkleur (iOS doet dit via black-translucent).
   const _tc = { groen: "#2e7d32", oranje: "#e8820c", blauw: "#1565c0", wit: "#ffffff" }[klasse];
@@ -1354,6 +1368,7 @@ function render() {
   const row = OMLOOP.ritten[RITI];
   if (_legeModus) { $("blijn").textContent = "leeg"; $("blijn").style.background = "#667"; $("blijn").style.color = "#fff"; $("bintern").textContent = "↳"; $("bintern").style.display = ""; }
   else { $("blijn").textContent = row[1]; $("blijn").style.background = lijnKleur(row[1]); $("blijn").style.color = lijnTekst(row[1]); $("bintern").style.display = "none"; }
+  $("blijn").style.display = (!_legeModus && !row[1]) ? "none" : "";
   $("brit").textContent = (!_legeModus && row && row[0]) ? row[0] : "";
   if (RIT.enkelDoel) { renderEnkelDoel(); return; } // lege rit zonder route: enkel afstand tot de doelhalte
   // positie bepalen
@@ -1371,13 +1386,13 @@ function render() {
   const focus = halten[fi];
   // Ben je echt bij de focus-halte (±20 m voor of na)? Dan is ze 'nu' (groen) en telt de klok af.
   const bijFocus = s != null && focus && halteS[fi] != null && Math.abs(halteS[fi] - s) <= 20;
-  $("tptijd").textContent = focus ? (focus.tijd || "--:--") : "--:--";
+  $("tptijd").textContent = OMLOOP.vrij ? "" : focus ? (focus.tijd || "--:--") : "--:--";
   $("tpnaam").textContent = focus ? focus.naam : "–";
   // afwijking
   if (s == null) { zetKop("wit", "– gps –", "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; }
   else {
-    const schema = schemaOp(s, halten, halteS);
-    const dev = nu() - schema; // >0 te laat, <0 te vroeg
+    const schema = OMLOOP.vrij ? nu() : schemaOp(s, halten, halteS);
+    const dev = nu() - schema; // >0 te laat, <0 te vroeg (vrije rit: altijd 0, dus wit en geen getal)
     // Meting voor de ritscore: elke tik route-trouw tellen, en bij elke nieuw bereikte halte de afwijking
     // vastleggen (stiptheid per halte).
     if (_ritStat && !_legeModus) {
@@ -1397,7 +1412,7 @@ function render() {
     zetKop(klasse, tekst);
     // Aftelklok: telt af tot het vertrek van de focus-halte zolang je binnen 20 m ervan bent (voor én
     // ná). Verder van de halte tonen we gewoon de klok (huidige tijd).
-    const secTot = (bijFocus && focus.min != null) ? (focus.min - nu()) * 60 : -1;
+    const secTot = (!OMLOOP.vrij && bijFocus && focus.min != null) ? (focus.min - nu()) * 60 : -1;
     if (secTot > 0) { $("klokhand").style.display = ""; $("klokt").textContent = klokHHMMSS(secTot); }
     else { $("klokhand").style.display = "none"; $("klokt").textContent = klokStr(); }
     // Voortgangsbalk vult (grijs) het stuk van de vorige halte tot de focus-halte — indicatie hoe ver
@@ -1441,7 +1456,7 @@ function render() {
 function renderEnkelDoel() {
   const d = (laatsteSnap && laatsteSnap.enkelDoel) ? laatsteSnap.afstandTot : null;
   const doelH = RIT.halten[0];
-  $("tptijd").textContent = doelH.tijd || "--:--";
+  $("tptijd").textContent = doelH.tijd || (OMLOOP.vrij ? "" : "--:--");
   $("tpnaam").textContent = RIT.naar || doelH.naam;
   $("klokt").textContent = klokStr(); $("klokhand").style.display = "none";
   $("balk").classList.remove("offroute");
@@ -1506,11 +1521,11 @@ function toonRitscore(res, laatste) {
 function eindeRit(bereikt) {
   if (_eindBezig || _omloopKlaar) return;
   const laatste = RITI + 1 >= OMLOOP.ritten.length;
-  const res = (!_legeModus) ? berekenScore(_ritStat) : null;
+  const res = (!_legeModus && !OMLOOP.vrij) ? berekenScore(_ritStat) : null;
   if (laatste) {
     _omloopKlaar = true;
     if (res) toonRitscore(res, true);
-    else toast((bereikt ? "" : "Eindhalte niet bereikt — ") + "Einde van de omloop", 8000);
+    else toast((bereikt ? "" : "Eindhalte niet bereikt — ") + (OMLOOP.vrij ? "Einde van de route" : "Einde van de omloop"), 8000);
     return;
   }
   _eindBezig = true;
@@ -2164,6 +2179,77 @@ $("instalKnop").onclick = async () => {
 };
 $("instalSluit").onclick = () => $("instalhulp").classList.remove("aan");
 $("instalhulp").addEventListener("click", e => { if (e.target === $("instalhulp")) $("instalhulp").classList.remove("aan"); });
+
+/* ===== vrije rit: een route rijden zonder dienstregeling ===== */
+// Een route = { naam, haltes: [[naam, lat, lon, reistijdMinNaarVolgende]], pts: [[lat, lon], …] }.
+// We bouwen er een omloop met één rit van (zoals een eigen net), met fictieve uren vanaf nu zodat de
+// bestaande rijlogica werkt, maar tonen geen uren, geen afwijking en geen ritscore (OMLOOP.vrij).
+function vrijUitGpx(tekst, bestandsnaam) {
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("Dit GPX-bestand kon niet gelezen worden.");
+  let tp = [...doc.getElementsByTagName("trkpt")]; if (tp.length < 2) tp = [...doc.getElementsByTagName("rtept")];
+  const pts = tp.map(t => [parseFloat(t.getAttribute("lat")), parseFloat(t.getAttribute("lon"))]).filter(p => isFinite(p[0]) && isFinite(p[1]));
+  if (pts.length < 2) throw new Error("Geen route (track) gevonden in dit bestand.");
+  const nm = doc.querySelector("trk > name") || doc.querySelector("metadata > name");
+  const naam = (nm && nm.textContent.trim()) || String(bestandsnaam || "Route").replace(/\.gpx$/i, "");
+  // Haltes = waypoints, gesorteerd volgens hun plaats langs de route. Geen waypoints: begin en einde.
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + meter(pts[i - 1], pts[i]));
+  const plaats = (ll) => { let b = 0, bd = Infinity; pts.forEach((p, k) => { const d = meter(p, ll); if (d < bd) { bd = d; b = k; } }); return b; };
+  let haltes = [...doc.getElementsByTagName("wpt")].map(w => {
+    const ll = [parseFloat(w.getAttribute("lat")), parseFloat(w.getAttribute("lon"))];
+    const n = w.getElementsByTagName("name")[0];
+    return { naam: (n && n.textContent.trim()) || "Halte", ll, k: plaats(ll) };
+  }).filter(h => isFinite(h.ll[0]) && isFinite(h.ll[1])).sort((a, b) => a.k - b.k);
+  // Ligt de eerste (laatste) halte niet bij het begin (einde) van de route, dan komt er een halte "Start" ("Einde") bij.
+  if (!haltes.length || meter(haltes[0].ll, pts[0]) > 60) haltes.unshift({ naam: "Start", ll: pts[0], k: 0 });
+  else haltes[0].k = 0;
+  const L = pts.length - 1;
+  if (haltes.length < 2 || meter(haltes[haltes.length - 1].ll, pts[L]) > 60) haltes.push({ naam: "Einde", ll: pts[L], k: L });
+  else haltes[haltes.length - 1].k = L;
+  // Reistijd tussen haltes enkel als rekenhulp (25 km/u); ze wordt nergens getoond.
+  const hs = haltes.map((h, i) => {
+    const vol = haltes[i + 1];
+    const min = vol ? Math.max(1, Math.round((cum[vol.k] - cum[h.k]) / 1000 / 25 * 60)) : 0;
+    return [h.naam, h.ll[0], h.ll[1], min];
+  });
+  return { naam, haltes: hs, pts, km: cum[cum.length - 1] / 1000 };
+}
+function startVrijeRit(route) {
+  const n = Math.ceil(nu()), tot = route.haltes.reduce((s, h) => s + (h[3] || 0), 0);
+  const wd = new Date().getDay() || 7;
+  const van = route.haltes[0][0], naar = route.haltes[route.haltes.length - 1][0];
+  OMLOOP = {
+    afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, naam: route.naam,
+    routes: { vrij: { haltes: route.haltes, pts: route.pts } }, busnr: "", busType: "",
+    ritten: [["", "", van, naar, _fmtMin(n), _fmtMin(n + tot), [wd], route.km || 0, "vrij"]],
+  };
+  try { localStorage.setItem("vrijeRoute", JSON.stringify(route)); } catch {}
+  gaNaarRit(0, false);
+}
+function vrijToonLaatste() {
+  let r = null; try { r = JSON.parse(localStorage.getItem("vrijeRoute") || "null"); } catch {}
+  const b = $("vrijLaatste");
+  if (r && r.haltes && r.pts) { b.style.display = ""; b.textContent = `▶ Opnieuw rijden: ${r.naam}`; b.onclick = () => startVrijeRit(r); }
+  else b.style.display = "none";
+}
+$("vrijKies").onclick = () => $("vrijGpx").click();
+$("vrijGpx").onchange = async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  $("vrijFout").textContent = "";
+  try { startVrijeRit(vrijUitGpx(await f.text(), f.name)); }
+  catch (er) { $("vrijFout").textContent = er.message || "Kon deze route niet openen."; }
+};
+vrijToonLaatste();
+// Vanuit de routetekenaar (zelfde site): ?vrij=1 rijdt meteen de route die daar klaargezet werd.
+try {
+  if (new URLSearchParams(location.search).get("vrij") === "1") {
+    // De routetekenaar zet zijn GPX klaar onder "vrijeGpx"; we nemen hem één keer over.
+    const g = localStorage.getItem("vrijeGpx"); localStorage.removeItem("vrijeGpx");
+    const r = g ? vrijUitGpx(g) : JSON.parse(localStorage.getItem("vrijeRoute") || "null");
+    if (r && r.haltes && r.pts) setTimeout(() => startVrijeRit(r), 0);
+  }
+} catch {}
 
 /* ===== start: eigen modus (Eigennet-site) — kies net, dag en omloop uit de eigen netten ===== */
 let EIGEN_NETTEN = [];
