@@ -507,7 +507,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   <div class="info">
     <b>Onafhankelijk hulpmiddel.</b> De getoonde tijden, routes en posities zijn indicatief en kunnen afwijken van de werkelijkheid. Blijf steeds zelf opletten in het verkeer.
     <br><br>
-    <b>Privacy.</b> Je locatie wordt enkel op dit toestel gebruikt om je positie op de route te tonen. Ze wordt nergens bewaard of doorgestuurd.
+    <b>Privacy.</b> <span id="privtekst">Je locatie wordt enkel op dit toestel gebruikt om je positie op de route te tonen. Ze wordt nergens bewaard of doorgestuurd.</span> Je toestel vraagt daarvoor één keer toestemming.
     <br><br>
     <b>Bron.</b> <span id="brontekst">Dienstregeling: De Lijn open data (Modellicentie Gratis Hergebruik).</span> Kaart: © OpenStreetMap.
     <div class="onaf" id="onaftekst">Onafhankelijk project — niet verbonden aan, noch goedgekeurd door De Lijn, TEC of MIVB.</div>
@@ -863,6 +863,7 @@ let RIT = null;        // bouwRit-resultaat
 let _ritStat = null;   // meting voor de ritscore: {devs:[afwijking per halte], lastFi, off, tot}
 let watchId = null, simAan = false, simLead = 0, simTimer = null;
 let laatsteSnap = null;
+let _gpsGeweigerd = false; // de chauffeur weigerde de locatietoestemming
 let laatstePos = null;  // laatst bekende ruwe GPS-positie [lat,lon], om bij een ritwissel opnieuw te snappen
 let _bewHoek = null;    // laatst bekende rijrichting (graden, 0=noord) — voor het draaien van de kaart
 let _snelheid = null;   // huidige snelheid in km/u (null = nog onbekend), licht afgevlakt
@@ -1469,7 +1470,7 @@ function render() {
   $("tptijd").textContent = OMLOOP.vrij ? "" : focus ? (focus.tijd || "--:--") : "--:--";
   $("tpnaam").textContent = focus ? focus.naam : "–";
   // afwijking
-  if (s == null) { zetKop("wit", "– gps –", "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; }
+  if (s == null) { zetKop("wit", "– gps –", _gpsGeweigerd ? "locatie geweigerd: sta locatie toe voor deze site in je instellingen" : "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; }
   else {
     const schema = OMLOOP.vrij ? nu() : schemaOp(s, halten, halteS);
     const dev = nu() - schema; // >0 te laat, <0 te vroeg (vrije rit: altijd 0, dus wit en geen getal)
@@ -1623,7 +1624,7 @@ function startGps() {
   watchId = navigator.geolocation.watchPosition(pos => {
     if (!RIT) return;
     const vorige = laatstePos;
-    laatstePos = [pos.coords.latitude, pos.coords.longitude];
+    laatstePos = [pos.coords.latitude, pos.coords.longitude]; _gpsGeweigerd = false;
     // Snelheid: liefst rechtstreeks van de GPS (m/s), anders geschat uit de verplaatsing sinds de vorige fix.
     // Licht afgevlakt zodat het cijfer niet springt.
     let _kmu = null;
@@ -1651,7 +1652,13 @@ function startGps() {
       sn.offRoute = true;
     }
     laatsteSnap = sn; // echte GPS heeft altijd voorrang op een handmatig gekozen halte
-  }, err => { /* geen fix: we tonen 'wacht op positie' */ }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 12000 });
+  }, err => {
+    // Geen fix: we tonen 'wacht op positie'. Weigerde de chauffeur de locatie, dan zeggen we dat.
+    if (err && err.code === 1) {
+      if (!_gpsGeweigerd) toast("Geen toegang tot je locatie. Sta locatie toe voor deze site in de instellingen van je browser, anders kan de boordcomputer je niet volgen.", 12000);
+      _gpsGeweigerd = true; render();
+    }
+  }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 12000 });
 }
 function stopGps() { if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch {} watchId = null; } _snelheid = null; _vorigeT = 0; stopPosDelen(); }
 
@@ -2407,6 +2414,7 @@ async function eigenInit() {
   $("brontekst").textContent = "Dienstregeling: zelf geplande netten (net-bouwer).";
   $("onaftekst").textContent = "Onafhankelijk project — niet verbonden aan, noch goedgekeurd door een vervoermaatschappij.";
   $("gateTekst").textContent = "Log eerst in om je omloop te openen.";
+  $("privtekst").textContent = "Je locatie wordt gebruikt om je positie op de route te tonen. Vul je bij een omloop een busnummer in, dan wordt je positie tijdens die rit gedeeld op de live kaart en de halteborden van het net. Bij een route zonder dienstregeling wordt niets doorgestuurd.";
   $("gateLink").href = "/login?terug=/boord/";
   $("eignet").onchange = () => { try { localStorage.setItem("eignet", $("eignet").value); } catch {} eigVulOmlopen(); };
   $("eigdag").onchange = eigVulOmlopen;
