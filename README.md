@@ -12,6 +12,7 @@ een eigen opslag en een eigen login.
 | `/eigenkaart?net=…` | Live kaart met de bussen die hun positie delen |
 | `/haltebord?net=…` | Printbare halteborden met QR naar de live doorkomsten |
 | `/login` | Inloggen of een account aanvragen |
+| `/extra` | Extra routes: GPX + naam opslaan, meteen in de boordcomputer (rijden zonder dienstregeling) |
 | `/routetekenaar` | Routes tekenen (busprofiel), als GPX downloaden of **op de site opslaan** |
 | `/admin` | Accounts goedkeuren, rechten geven, netten overnemen uit Lijnkijker |
 

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extra routes · Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --accent:#1f5f8b; --good:#2d7d46; --bad:#c0392b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; --accent:#6ab0e0; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px }
+.kaartje { max-width:520px; margin:16px auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px }
+h1 { font-size:20px; margin:0 0 4px } h2 { font-size:16px; margin:0 0 8px } .muted { color:var(--muted); font-size:14px }
+label { display:block; font-size:13px; color:var(--muted); margin:12px 0 3px }
+input[type=text] { width:100%; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit }
+input[type=file] { width:100%; font:inherit }
+button { font:600 15px system-ui; padding:11px; border-radius:6px; border:0; background:var(--good); color:#fff; cursor:pointer }
+#bewaar { width:100%; margin-top:16px }
+.fout { color:var(--bad); font-size:14px; margin-top:8px } .ok { color:var(--good); font-size:14px; margin-top:8px }
+.rij { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid var(--line) }
+.rij .n { flex:1; min-width:0 } .rij small { color:var(--muted) }
+.rij button { background:transparent; color:var(--bad); border:1px solid var(--line); padding:6px 10px; font-size:13px }
+a { color:var(--accent) }
+</style>
+</head>
+<body>
+<div class="kaartje">
+  <h1>Extra routes</h1>
+  <p class="muted" style="margin:0">Routes zonder dienstregeling, bv. een omleiding. Ze staan meteen in de boordcomputer onder "Route rijden zonder dienstregeling".</p>
+  <label for="bestand">GPX-bestand (bv. uit BRouter-web, export "GPX Track")</label>
+  <input type="file" id="bestand" accept=".gpx,application/gpx+xml">
+  <label for="naam">Naam</label>
+  <input type="text" id="naam" placeholder="Omleiding Gent Zuid - Gent Sint-Pieters" maxlength="120">
+  <button id="bewaar">Opslaan</button>
+  <div id="melding"></div>
+</div>
+<div class="kaartje">
+  <h2>In de boordcomputer</h2>
+  <div id="lijst" class="muted">Laden…</div>
+  <p class="muted" style="margin:12px 0 0"><a href="/boord/">Boordcomputer openen</a> · <a href="/brouter">BRouter-web met busprofiel</a> · <a href="/">Eigennet</a></p>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+async function api(body) {
+  const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(d.fout || "Fout " + r.status); e.status = r.status; throw e; }
+  return d;
+}
+const naarLogin = (e) => (e.status === 401 || e.status === 403)
+  ? `${esc(e.message)} <a href="/login?terug=/extra">Inloggen</a>` : esc(e.message);
+function meld(html, ok) { $("melding").className = ok ? "ok" : "fout"; $("melding").innerHTML = html; }
+// Lengte en aantal haltes (waypoints) uit de GPX, voor de lijst.
+function gpxInfo(tekst) {
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  let tp = [...doc.getElementsByTagName("trkpt")]; if (tp.length < 2) tp = [...doc.getElementsByTagName("rtept")];
+  if (doc.getElementsByTagName("parsererror").length || tp.length < 2) return null;
+  const R = 6371000, rad = Math.PI / 180; let m = 0;
+  for (let i = 1; i < tp.length; i++) {
+    const a = [+tp[i - 1].getAttribute("lat"), +tp[i - 1].getAttribute("lon")], b = [+tp[i].getAttribute("lat"), +tp[i].getAttribute("lon")];
+    const dl = (b[0] - a[0]) * rad, dn = (b[1] - a[1]) * rad;
+    const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dn / 2) ** 2;
+    m += 2 * R * Math.asin(Math.sqrt(h));
+  }
+  return { km: m / 1000, haltes: doc.getElementsByTagName("wpt").length };
+}
+$("bestand").onchange = () => {
+  const f = $("bestand").files[0];
+  if (f && !$("naam").value.trim()) $("naam").value = f.name.replace(/\.gpx$/i, "").replace(/[_]+/g, " ");
+};
+$("bewaar").onclick = async () => {
+  const f = $("bestand").files[0], naam = $("naam").value.trim();
+  if (!f) return meld("Kies eerst een GPX-bestand.");
+  if (!naam) return meld("Geef de route een naam.");
+  const gpx = await f.text(), info = gpxInfo(gpx);
+  if (!info) return meld("In dit bestand staat geen route. Exporteer in BRouter-web als GPX Track.");
+  $("bewaar").disabled = true;
+  try {
+    await api({ actie: "bewaar", naam, gpx, km: info.km, haltes: info.haltes });
+    meld(`✓ "${esc(naam)}" staat in de boordcomputer.`, true);
+    $("bestand").value = ""; $("naam").value = "";
+    laad();
+  } catch (e) { meld(naarLogin(e)); }
+  finally { $("bewaar").disabled = false; }
+};
+async function laad() {
+  try {
+    const { routes } = await api({ actie: "lijst" });
+    $("lijst").className = routes.length ? "" : "muted";
+    $("lijst").innerHTML = routes.length ? routes.map((r) =>
+      `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${String(r.km || 0).replace(".", ",")} km${r.haltes ? ` · ${r.haltes} haltes` : ""}</small></div>` +
+      `<button data-id="${esc(r.id)}" data-naam="${esc(r.naam)}">Verwijderen</button></div>`).join("")
+      : "Nog geen extra routes.";
+  } catch (e) { $("lijst").innerHTML = naarLogin(e); }
+}
+$("lijst").onclick = async (ev) => {
+  const b = ev.target.closest("button[data-id]"); if (!b) return;
+  if (!confirm(`"${b.dataset.naam}" verwijderen? Ze verdwijnt dan uit de boordcomputer.`)) return;
+  try { await api({ actie: "verwijder", id: b.dataset.id }); laad(); } catch (e) { meld(naarLogin(e)); }
+};
+laad();
+</script>
+</body>
+</html>
