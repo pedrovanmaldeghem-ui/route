@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   html, body { margin: 0; height: 100%; }
-  #rt-app { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; color: #1f2933; }
+  #rt-app { position: relative; display: flex; flex-direction: column; height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; color: #1f2933; }
   #rt-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; background: #f5f7fa; border-bottom: 1px solid #d9dee5; }
   #rt-toolbar input[type=text] { padding: 6px 8px; border: 1px solid #c3cad3; border-radius: 6px; min-width: 180px; font: inherit; }
   #rt-app button { padding: 6px 10px; border: 1px solid #c3cad3; border-radius: 6px; background: #fff; cursor: pointer; font: inherit; }
@@ -30,6 +30,12 @@
   .rt-popup input[type=text] { width: 150px; padding: 3px 5px; }
   .rt-popup .rt-row { display: flex; gap: 6px; margin-top: 6px; }
   #rt-app a.rt-terug { color: #1d4ed8; text-decoration: none; font-weight: 600; }
+  #rt-bw { display: none; position: absolute; z-index: 1000; top: 100px; right: 12px; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 130px); overflow: auto; background: #fff; border: 1px solid #c3cad3; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 14px; }
+  #rt-bw.aan { display: block; }
+  #rt-bw h3 { margin: 0 0 6px; font-size: 15px; }
+  #rt-bw ol { padding-left: 20px; margin: 6px 0; line-height: 1.5; }
+  #rt-bw pre { background: #f5f7fa; border: 1px solid #d9dee5; border-radius: 6px; padding: 6px 8px; font-size: 12px; overflow-x: auto; }
+  #rt-bw .rt-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
   .rt-busleg { display: inline-block; width: 18px; height: 4px; background: #dc2626; vertical-align: middle; margin-right: 4px; }
 </style>
 </head>
@@ -47,10 +53,34 @@
     <button type="button" id="rt-import">GPX openen</button>
     <input type="file" id="rt-file" accept=".gpx,application/gpx+xml" hidden>
     <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
+    <button type="button" id="rt-brouter" title="Open dezelfde kaartplek in BRouter-web, met uitleg en het busprofiel">BRouter-web…</button>
     <button type="button" id="rt-export" class="rt-primary">Download GPX</button>
     <span id="rt-info">0,00 km</span>
   </div>
   <div id="rt-map"></div>
+  <div id="rt-bw" role="dialog" aria-label="BRouter-web met busprofiel">
+    <h3>Route tekenen in BRouter-web</h3>
+    <p style="margin:0 0 6px">BRouter-web heeft meer opties (tussenpunten slepen, hoogteprofiel, andere kaarten). Met ons busprofiel rijdt het ook over busbanen en busstraten.</p>
+    <div class="rt-row">
+      <button type="button" id="rt-bw-kopieer" class="rt-primary">1. Busprofiel kopiëren</button>
+      <button type="button" id="rt-bw-open">2. BRouter-web openen</button>
+      <a href="/routetekenaar/bus.brf" download="bus.brf" style="align-self:center">profiel downloaden</a>
+    </div>
+    <ol>
+      <li>Klik <b>Busprofiel kopiëren</b> en daarna <b>BRouter-web openen</b>. Die opent op dezelfde plek als hier.</li>
+      <li>Open in BRouter-web de zijbalk, tabblad <b>Profiel</b>. Selecteer de tekst daar, plak het busprofiel erover en klik <b>Upload</b>.</li>
+      <li>Zet je startpunt, een tussenpunt in de busbaan van elk perron dat de bus moet aandoen, en je eindpunt.</li>
+      <li>Exporteer als <b>GPX Track</b>. Die kan je hier openen met <b>GPX openen</b>, of rechtstreeks in de net-bouwer importeren.</li>
+    </ol>
+    <p style="margin:6px 0">Liever het gewone autoprofiel (car-vario) zelf aanpassen? Voeg dan direct na <code>assign caraccess</code> deze twee regels toe:</p>
+    <pre>assign caraccess
+       or bus=yes|designated
+       or psv=yes|designated
+       switch motorcar=
+       ... (de rest ongewijzigd)</pre>
+    <p class="muted" style="margin:0;color:#52606d;font-size:12px">BRouter-web onthoudt het profiel niet. Je hoeft het niet zelf te bewaren: het staat altijd klaar via de kopieerknop hierboven.</p>
+    <div class="rt-row" style="justify-content:flex-end;margin-bottom:0"><button type="button" id="rt-bw-sluit">Sluiten</button></div>
+  </div>
   <div id="rt-help">
     Klik op de kaart om punten toe te voegen. <b>Weg volgen</b> volgt de weg, <b>Vrij tekenen</b> trekt een rechte lijn (handig over busperrons).
     <b>Weg volgen</b> rijdt zoals een bus: ook over busbanen, busstraten en door busvallen.
@@ -504,6 +534,20 @@
   });
   el('rt-export').addEventListener('click', exportGpx);
   el('rt-bus').addEventListener('click', busToggle);
+  // BRouter-web: paneel met uitleg, busprofiel naar het klembord en dezelfde kaartplek openen.
+  el('rt-brouter').addEventListener('click', function () { el('rt-bw').classList.toggle('aan'); });
+  el('rt-bw-sluit').addEventListener('click', function () { el('rt-bw').classList.remove('aan'); });
+  el('rt-bw-kopieer').addEventListener('click', function () {
+    var knop = this;
+    fetch(BUS_PROFILE_URL).then(function (r) { return r.text(); })
+      .then(function (t) { return navigator.clipboard.writeText(t); })
+      .then(function () { knop.textContent = '✓ Gekopieerd'; setTimeout(function () { knop.textContent = '1. Busprofiel kopiëren'; }, 2500); })
+      .catch(function () { window.open(BUS_PROFILE_URL, '_blank'); });
+  });
+  el('rt-bw-open').addEventListener('click', function () {
+    var c = map.getCenter();
+    window.open('https://brouter.de/brouter-web/#map=' + map.getZoom() + '/' + c.lat.toFixed(5) + '/' + c.lng.toFixed(5) + '/standard&profile=car-vario', '_blank', 'noopener');
+  });
   el('rt-import').addEventListener('click', function () { el('rt-file').click(); });
   el('rt-file').addEventListener('change', function () {
     var f = this.files[0];
