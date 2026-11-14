@@ -2431,8 +2431,10 @@ $("vrijLijst").addEventListener("click", async (e) => {
   finally { b.disabled = false; }
 });
 // Rechtstreekse link naar een opgeslagen route: /boord/?route=<id> opent ze meteen.
+// Vanuit zo'n link kan de chauffeur niet terug naar het hoofdscherm: "Loop afsluiten" en "Andere omloop" verdwijnen.
 try {
   const rid = new URLSearchParams(location.search).get("route");
+  if (rid) { $("menuTerug").style.display = "none"; $("ovzTerug").style.display = "none"; }
   if (rid) setTimeout(() => vrijStartOpgeslagen(rid).catch(er => { document.documentElement.classList.remove("linkstart"); $("vrijFout").textContent = er.message; $("vrijKaart").hidden = false; $("vrijKaart").scrollIntoView(); }), 0);
 } catch {}
 vrijLaadLijst();
