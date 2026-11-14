@@ -293,7 +293,7 @@ async function apiRoute(req, env, c) {
     if (!/<trkpt|<rtept/.test(gpx)) return json({ fout: "Dit is geen route (geen trackpunten)." }, 400);
     if (gpx.length > MAX_GPX) return json({ fout: "Deze route is te groot." }, 400);
     // Pendel: heenrit (gpx) + terugrit (gpxTerug) die heen-terug-heen… gereden worden.
-    const pendel = !!b.pendel, gpxTerug = pendel ? String(b.gpxTerug || "") : "";
+    let pendel = !!b.pendel, gpxTerug = pendel ? String(b.gpxTerug || "") : "";
     if (pendel && !/<trkpt|<rtept/.test(gpxTerug)) return json({ fout: "Geef voor een pendel ook de terugrit (GPX)." }, 400);
     if (gpxTerug.length > MAX_GPX) return json({ fout: "De terugrit is te groot." }, 400);
     // Zelfde naam = dezelfde route overschrijven, tenzij er een id meekomt.
@@ -306,12 +306,20 @@ async function apiRoute(req, env, c) {
       }
     }
     if (!id) id = "rt_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20); // niet te raden
+    // Opslaan zonder soort (bv. vanuit de routetekenaar, die enkel de heenrit kent) over een bestaande
+    // pendel: pendel blijven, met de bestaande terugrit. Anders wordt een pendel stilletjes een enkele route.
+    const oudMeta = await c.st.getJSONveilig(`routemeta/${id}`, null);
+    let kmTerugOud = 0;
+    if (b.pendel === undefined && oudMeta && oudMeta.pendel) {
+      const oudTerug = await c.st.get(`routeterug/${id}`);
+      if (oudTerug) { pendel = true; gpxTerug = String(oudTerug); kmTerugOud = oudMeta.kmTerug || 0; }
+    }
     const meta = { id, naam, km: Math.round((Number(b.km) || 0) * 100) / 100, haltes: Math.max(0, parseInt(b.haltes, 10) || 0), gewijzigd: Date.now() };
     // Geen info meegestuurd (bv. opnieuw opslaan vanuit de tekenaar): de bestaande infobanner behouden.
     let info = String(b.info || "").trim().slice(0, 500);
-    if (b.info === undefined) { const oud = await c.st.getJSONveilig(`routemeta/${id}`, null); info = (oud && oud.info) || ""; }
+    if (b.info === undefined) info = (oudMeta && oudMeta.info) || "";
     if (info) meta.info = info;
-    if (pendel) { meta.pendel = true; meta.kmTerug = Math.round((Number(b.kmTerug) || 0) * 100) / 100; }
+    if (pendel) { meta.pendel = true; meta.kmTerug = Math.round((Number(b.kmTerug) || kmTerugOud || 0) * 100) / 100; }
     await c.st.set(`route/${id}`, gpx);
     if (pendel) await c.st.set(`routeterug/${id}`, gpxTerug);
     else await c.st.delete(`routeterug/${id}`).catch(() => {});
