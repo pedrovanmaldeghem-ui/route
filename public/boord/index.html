@@ -112,7 +112,16 @@ body.donker .goed{color:#b6f0bd}
 .tl .naam{font-size:20px; line-height:1.15; font-weight:500}
 .tl li{cursor:pointer} .tl li:active{background:#eceff3}
 #balkbtns{display:flex; gap:8px; padding:8px; background:#fff; border-top:1px solid #d0d5dd}
-#balkbtns .knop{flex:1; text-align:center; background:#f2f4f7; color:#15181d; border-color:#d0d5dd; font-size:23px; line-height:1; padding:11px 0}
+#balkbtns .knop{flex:1; text-align:center; background:#f2f4f7; color:#15181d; border-color:#d0d5dd; font-size:12px; font-weight:600; line-height:1; padding:7px 0 6px;
+  display:flex; flex-direction:column; align-items:center; gap:3px}
+#balkbtns .knop .ic{width:26px; height:26px}
+#balkbtns .knop.klein{flex:0 0 64px; font-weight:500; opacity:.85}
+/* Pictogrammen (lijnstijl, zoals de BusPilot-legende); geel vlak voor start/pauze/stop, gele driehoek voor meldingen */
+.ic{width:1.15em; height:1.15em; vertical-align:-0.2em; display:inline-block; flex:none}
+.ic.geel{color:#facc15}
+.icvak{display:inline-flex; align-items:center; justify-content:center; background:#facc15; color:#111; border-radius:6px; width:1.6em; height:1.4em; vertical-align:-0.35em; margin-right:4px}
+.icvak .ic{width:1em; height:1em}
+.menuknoppen .knop{display:flex; align-items:center; gap:12px; text-align:left}
 /* Onderaan: aankomst van deze rit + vertrek/pauze van de volgende rit. Wit, net als de haltelijst. */
 #volgstrip{background:#fff; color:#15181d; border-top:1px solid #d0d5dd; padding:7px 14px; display:flex; flex-direction:column; gap:3px}
 #volgstrip:empty{display:none}
@@ -264,7 +273,8 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .bm .richt svg{width:48px;height:48px;display:block}
 .bm .richt path{fill:var(--volgkleur);stroke:#fff;stroke-width:1.7;stroke-linejoin:round}
 /* Kaartknoppen (onder de zoomknoppen): volgmodus-switch en navigatie. */
-.leaflet-bar a.mapknop{font-size:18px;font-weight:700;text-align:center}
+.leaflet-bar a.mapknop{font-size:18px;font-weight:700;text-align:center;display:flex;align-items:center;justify-content:center}
+.leaflet-bar a.mapknop .ic{width:18px;height:18px}
 .leaflet-bar a.mapknop.aan{background:var(--blauw);color:#fff}
 /* Navigatie-instructiebalk boven de kaart. */
 .navbaan{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:600;
@@ -406,8 +416,8 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   <div id="ovzkop"></div>
   <div id="ovzlijst"></div>
   <div id="ovzknoppen">
-    <button class="knop primair" id="ovzStart" style="flex:1">Start</button>
-    <button class="knop" id="ovzTerug">Andere omloop</button>
+    <button class="knop primair" id="ovzStart" style="flex:1"><i data-ic="start"></i>Rit starten</button>
+    <button class="knop" id="ovzTerug"><i data-ic="omloop"></i>Andere omloop</button>
   </div>
 </section>
 
@@ -434,10 +444,10 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   </div>
   <div id="volgstrip"></div>
   <div id="balkbtns">
-    <button class="knop" id="btnLijst" aria-pressed="true" title="Halten" aria-label="Halten">📋</button>
-    <button class="knop" id="btnKaart" title="Kaart" aria-label="Kaart">🗺️</button>
-    <button class="knop" id="btnMenu" title="Rit" aria-label="Rit">🔑</button>
-    <button class="knop" id="btnOml" title="Omleiding — klopt de route voor deze rit?" aria-label="Omleiding">⚠️</button>
+    <button class="knop" id="btnLijst" aria-pressed="true" title="Haltes" aria-label="Haltes"><i data-ic="haltes"></i>Haltes</button>
+    <button class="knop" id="btnKaart" title="Kaart" aria-label="Kaart"><i data-ic="kaart"></i>Kaart</button>
+    <button class="knop" id="btnOml" title="Melding — omleiding of info bij deze rit" aria-label="Melding"><i data-ic="melding"></i>Melding</button>
+    <button class="knop klein" id="btnMenu" title="Meer" aria-label="Meer"><i data-ic="meer"></i>Meer</button>
   </div>
 </section>
 
@@ -457,11 +467,11 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <h3 id="menuTitel">Menu</h3>
     <div class="ritkeuze" id="menuLijst"></div>
     <div class="menuknoppen" id="menuActies">
-      <button class="knop" id="menuOverzicht">📋 Naar rittenoverzicht</button>
-      <button class="knop" id="menuThema">🌙 Donkere modus</button>
-      <button class="knop" id="menuInfo">ⓘ Info &amp; disclaimer</button>
-      <button class="knop" id="menuMelden">🛠️ Probleem of suggestie melden</button>
-      <button class="knop" id="menuTerug">⏹ Loop afsluiten</button>
+      <button class="knop" id="menuOverzicht"><i data-ic="wissel"></i>Rit wisselen</button>
+      <button class="knop" id="menuThema"><i data-ic="instel"></i><span>Donkere modus</span></button>
+      <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
+      <button class="knop" id="menuMelden"><i data-ic="bericht"></i>Probleem of suggestie melden</button>
+      <button class="knop" id="menuTerug"><i data-ic="stop"></i>Loop afsluiten</button>
     </div>
   </div>
 </div>
@@ -509,9 +519,9 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 
 <!-- Opstartscherm: logo + disclaimer/privacy/bronvermelding (wegklikken om te starten) -->
 <!-- Live bericht van de beheerder: bovenaan als melding, blijft staan tot de chauffeur ✕ tikt -->
-<div id="livebalk" role="alert"><span>📢</span><div class="t"><small id="livetijd"></small><span id="livetxt"></span></div><button id="liveSluit" aria-label="Bericht sluiten">✕</button></div>
+<div id="livebalk" role="alert"><i data-ic="bericht" style="font-size:22px"></i><div class="t"><small id="livetijd"></small><span id="livetxt"></span></div><button id="liveSluit" aria-label="Bericht sluiten">✕</button></div>
 <!-- Infobanner van een opgeslagen route: één keer bij het openen, wegklikken met OK -->
-<div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3 id="infoovKop">ℹ️ Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
+<div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3 id="infoovKop"><i data-ic="info"></i> Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
 <div id="intro">
   <div class="merk">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -556,6 +566,30 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 <!-- modus.js zet window.BOORD_MODUS: "delijn" (Lijnkijker) of "eigen" (Eigennet-site). Dit bestand is per site
      verschillend; index.html zelf is op beide sites identiek (wordt automatisch gesynchroniseerd). -->
 <script src="modus.js"></script>
+<script>
+/* Pictogrammen in lijnstijl (zoals de BusPilot-legende): inline SVG, kleur volgt de tekst. */
+const _sv = (d, extra = "") => `<svg class="ic${extra}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const IC = {
+  haltes: _sv('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>'),
+  kaart: _sv('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>'),
+  bericht: _sv('<path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.1A8.5 8.5 0 1 1 21 12z"/>'),
+  meer: _sv('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+  start: `<span class="icvak">${_sv('<path d="M8 5v14l11-7z" fill="currentColor"/>')}</span>`,
+  pauze: `<span class="icvak">${_sv('<path d="M9 5v14M15 5v14" stroke-width="3"/>')}</span>`,
+  stop: `<span class="icvak">${_sv('<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>')}</span>`,
+  wissel: _sv('<path d="M4 8h14l-4-4M20 16H6l4 4"/>'),
+  omloop: _sv('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>'),
+  instel: _sv('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+  info: _sv('<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/>'),
+  melding: `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 1.5 21h21z" fill="#facc15" stroke="#a16207" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 9v5.5" stroke="#111" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.4" fill="#111"/></svg>`,
+  halte: _sv('<path d="M12 21s-7-6.2-7-11.5a7 7 0 1 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5" fill="currentColor"/>'),
+  vertrek: _sv('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
+  nav: _sv('<path d="M12 2 5 21l7-4 7 4z"/>'),
+  label: _sv('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/>'),
+};
+function vulIconen(root) { (root || document).querySelectorAll("i[data-ic]").forEach(i => { if (IC[i.dataset.ic]) i.outerHTML = IC[i.dataset.ic]; }); }
+vulIconen();
+</script>
 <script>
 const EIGEN_MODUS = window.BOORD_MODUS === "eigen";
 const $ = id => document.getElementById(id);
@@ -1219,7 +1253,7 @@ function toonInfoEenmalig() {
   const t = (OMLOOP && OMLOOP.vrij && OMLOOP.info) || "";
   if (!t || _infoGetoond) return;
   _infoGetoond = true;
-  $("infoovKop").textContent = "ℹ️ Info"; $("infoovtxt").textContent = t; $("infoov").classList.add("aan");
+  $("infoovKop").innerHTML = IC.info + " Info"; $("infoovtxt").textContent = t; $("infoov").classList.add("aan");
 }
 // Live bericht: de beheerder stuurt op /extra een bericht naar een route; elke boordcomputer op die
 // route kijkt om de 30 s (enkel als het scherm aan staat) en toont een nieuw bericht één keer, met piep.
@@ -1830,7 +1864,7 @@ function maakKaart() {
     : c0;
   kaart.setView(_c, RIJZOOM, { animate: false });
   // Knoppen onder de zoomknoppen (+/-): volgmodus-switch en navigatie aan/uit.
-  volgKnop = mapKnop("topleft", "🎯", "Volgmodus aan/uit", el => {
+  volgKnop = mapKnop("topleft", IC.halte, "Volgmodus aan/uit", el => {
     volgModus = !volgModus;
     el.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
     el.title = volgModus ? "Volgmodus aan — tik om de kaart vrij te bewegen" : "Vrij bewegen — tik om weer te volgen";
@@ -1839,7 +1873,7 @@ function maakKaart() {
   });
   volgKnop.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
   volgKnop.title = volgModus ? "Volgmodus aan — tik om de kaart vrij te bewegen" : "Vrij bewegen — tik om weer te volgen";
-  navKnop = mapKnop("topleft", "🧭", "Navigatie aan/uit", el => {
+  navKnop = mapKnop("topleft", IC.nav, "Navigatie aan/uit", el => {
     navAan = !navAan;
     el.classList.toggle("aan", navAan);
     if (!navAan) $("navbaan").classList.remove("aan");
@@ -1848,7 +1882,7 @@ function maakKaart() {
   navKnop.classList.toggle("aan", navAan);
   if (!navAan) $("navbaan").classList.remove("aan");
   // Haltenamen tonen/verbergen (het 'vakje' onder de zoomknoppen).
-  labelKnop = mapKnop("topleft", "🏷️", "Haltenamen tonen/verbergen", el => {
+  labelKnop = mapKnop("topleft", IC.label, "Haltenamen tonen/verbergen", el => {
     toonLabels = !toonLabels; el.classList.toggle("aan", toonLabels);
     if (toonLabels) labelLaag.addTo(kaart); else if (labelLaag) kaart.removeLayer(labelLaag);
   });
@@ -2129,9 +2163,9 @@ async function toonOmleiding() {
   $("omlov").classList.add("aan");
   // Route zonder dienstregeling: geen omleidingen van De Lijn, wel de infobanner van de route.
   if (OMLOOP && OMLOOP.vrij) {
-    $("omlTitel").textContent = "ℹ️ Info bij deze route";
+    $("omlTitel").innerHTML = IC.info + " Info bij deze route";
     const vak = (t) => `<div style="background:#fff4c2;color:#3d2e00;border-radius:10px;padding:14px;font-size:18px;line-height:1.4;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:10px">${esc(t)}</div>`;
-    const live = _liveLaatste && OMLOOP.routeId ? `<h4 style="margin:0 0 6px">📢 Laatste bericht · ${new Date(_liveLaatste.t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })}</h4>` + vak(_liveLaatste.tekst) : "";
+    const live = _liveLaatste && OMLOOP.routeId ? `<h4 style="margin:0 0 6px">${IC.bericht} Laatste bericht · ${new Date(_liveLaatste.t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })}</h4>` + vak(_liveLaatste.tekst) : "";
     $("omlInhoud").innerHTML = (live + (OMLOOP.info ? vak(OMLOOP.info) : "")) || `<p class="hint">Geen extra info voor deze route.</p>`;
     return;
   }
@@ -2301,7 +2335,7 @@ try { donker = localStorage.getItem("lk-boord-thema") === "donker"; } catch {}
 function pasThemaToe() {
   $("rij").classList.toggle("donker", donker);
   document.body.classList.toggle("donker", donker); // ook de opstart-/pauze-/menuschermen
-  $("menuThema").textContent = donker ? "☀️ Lichte modus" : "🌙 Donkere modus";
+  $("menuThema").querySelector("span").textContent = donker ? "Lichte modus" : "Donkere modus";
 }
 $("menuThema").onclick = () => {
   donker = !donker;
@@ -2456,7 +2490,7 @@ async function vrijLaadLijst() {
   if (window._vrijEnkelLink) return; // intussen in link-modus gezet (niet ingelogd)
   box.innerHTML = routes.length
     ? `<p class="hint" style="margin:0 0 6px">Klaargezette routes:</p>` + routes.map(x =>
-        `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">${x.pendel ? "⇄" : "▶"} ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
+        `<button class="knop" data-route="${esc(x.id)}" style="width:100%;margin-bottom:8px;text-align:left">${x.pendel ? IC.wissel : IC.start} ${esc(x.naam)}${x.km ? ` <small style="opacity:.7">· ${String(x.km).replace(".", ",")} km</small>` : ""}</button>`).join("")
     : "";
 }
 // Opgeslagen route (uit /api/route) → route-object; een pendel krijgt een terugrit (eigen GPX of omgekeerd).
@@ -2565,7 +2599,7 @@ async function eigenInit() {
         window._vrijEnkelLink = true;
         $("vrijKies").style.display = "none"; vrijToonLaatste();
         $("vrijKaart").querySelector("p.hint").style.display = "none";
-        $("vrijLijst").innerHTML = `<button class="knop" data-route="${esc(new URLSearchParams(location.search).get("route"))}" style="width:100%">▶ Route opnieuw starten</button>`;
+        $("vrijLijst").innerHTML = `<button class="knop" data-route="${esc(new URLSearchParams(location.search).get("route"))}" style="width:100%">${IC.start} Route opnieuw starten</button>`;
       }
       return;
     }
