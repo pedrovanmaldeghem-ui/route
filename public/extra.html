@@ -156,7 +156,7 @@ async function laad() {
     $("lijst").className = routes.length ? "" : "muted";
     $("lijst").innerHTML = routes.length ? routes.map((r) =>
       `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${r.pendel ? `Pendel · heen ${String(r.km || 0).replace(".", ",")} km, terug ${String(r.kmTerug || 0).replace(".", ",")} km` : `${String(r.km || 0).replace(".", ",")} km`}${r.haltes ? ` · ${r.haltes} haltes` : ""}</small>${r.info ? `<span class="info">ℹ️ ${esc(r.info)}</span>` : ""}</div>` +
-      `<button class="link" data-info="${esc(r.id)}" title="Tekst die de chauffeur bovenaan ziet tijdens het rijden">Infobanner</button>` +
+      `<button class="link" data-info="${esc(r.id)}" title="Tekst die de chauffeur één keer ziet bij het openen van de route">Infobanner</button>` +
       `<button class="link" data-link="${esc(r.id)}" title="Link die deze route meteen in de boordcomputer opent">Link kopiëren</button>` +
       `<button data-id="${esc(r.id)}" data-naam="${esc(r.naam)}">Verwijderen</button></div>`).join("")
       : "Nog geen extra routes.";

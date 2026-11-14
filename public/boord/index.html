@@ -152,11 +152,12 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker .tl li.nu{background:#13241a}
 #rij.donker .tl li.volgend::before{border-color:#fff}
 #rij.donker .tl li:active{background:#16202b}
-#infoban{display:flex; align-items:flex-start; gap:8px; background:#fff4c2; color:#3d2e00; border-bottom:1px solid #e8c95a; padding:8px 12px; font-size:15px; line-height:1.35; font-weight:600}
-#infoban[hidden]{display:none}
-#infoban .t{flex:1; white-space:pre-wrap; overflow-wrap:anywhere}
-#infoban button{background:transparent; border:0; color:inherit; font:700 16px system-ui; padding:0 4px; cursor:pointer}
-#infoban.klein .t{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#infoov{position:fixed; inset:0; z-index:1190; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; padding:20px}
+#infoov.aan{display:flex}
+#infoov .blok{background:#fff4c2; color:#3d2e00; border-radius:12px; padding:20px; max-width:480px; width:100%; box-shadow:0 10px 30px rgba(0,0,0,.4)}
+#infoov h3{margin:0 0 10px; font-size:20px}
+#infoov .t{white-space:pre-wrap; overflow-wrap:anywhere; font-size:18px; line-height:1.4; font-weight:600; max-height:60vh; overflow:auto}
+#infoov button{margin-top:16px; width:100%; padding:14px; font:700 18px system-ui; border:0; border-radius:8px; background:#1f2937; color:#fff}
 #rij.geenhaltes #tp{display:none} /* vrije rit zonder haltes: geen haltebalk, de kaart loopt door */
 #rij.donker #tp{background:#161b22; color:#f2f4f7; border-left-color:var(--lijn)}
 #rij.donker #tp::before{background:var(--bg); border-color:var(--muted)}
@@ -418,7 +419,6 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
   </div>
   <div id="tp"><span class="tpt" id="tptijd">--:--</span><span class="tpn" id="tpnaam">–</span></div>
-  <div id="infoban" hidden><span>ℹ️</span><span class="t" id="infobantxt"></span><button id="infobanx" aria-label="Info kleiner of groter">▴</button></div>
   <div id="body">
     <div id="lijstwrap"><ul class="tl" id="tl"></ul></div>
     <div id="kaart"></div>
@@ -501,6 +501,8 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 </div>
 
 <!-- Opstartscherm: logo + disclaimer/privacy/bronvermelding (wegklikken om te starten) -->
+<!-- Infobanner van een opgeslagen route: één keer bij het openen, wegklikken met OK -->
+<div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3>ℹ️ Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
 <div id="intro">
   <div class="merk">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -1201,14 +1203,17 @@ function kiesHuidigeRit() {
   for (let i = 0; i < rt.length; i++) { const v = _toMin(rt[i][4]); if (v != null && v >= n) return i; } // eerstvolgend
   return rt.length - 1;
 }
-// Infobanner van een opgeslagen route (in te vullen op /extra). Tik = kleiner (één regel) of weer groot.
-function zetInfoBanner() {
+// Infobanner van een opgeslagen route (in te vullen op /extra): één keer per keer dat de link geopend
+// wordt, vóór de ritkeuze; de chauffeur klikt hem weg met OK. Ligt onder het opstartscherm (dat eerst komt).
+let _infoGetoond = false;
+function toonInfoEenmalig() {
   const t = (OMLOOP && OMLOOP.vrij && OMLOOP.info) || "";
-  $("infoban").hidden = !t; $("infobantxt").textContent = t;
+  if (!t || _infoGetoond) return;
+  _infoGetoond = true;
+  $("infoovtxt").textContent = t; $("infoov").classList.add("aan");
 }
-$("infoban").onclick = () => { const k = $("infoban").classList.toggle("klein"); $("infobanx").textContent = k ? "▾" : "▴"; if (kaart) setTimeout(() => kaart.invalidateSize(), 50); };
+$("infoovOk").onclick = () => $("infoov").classList.remove("aan");
 async function gaNaarRit(i, viaPauze) {
-  zetInfoBanner();
   _legeModus = false; _legeBezig = false; // we stappen in een echte dienstrit, geen lege rit meer
   RITI = Math.max(0, Math.min(OMLOOP.ritten.length - 1, i));
   _omloopKlaar = false; _eindBezig = false; // einde-melding resetten voor de nieuwe rit
@@ -2368,6 +2373,7 @@ async function startVrijeRit(route) {
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
   let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
   if (eerste) toonIntro();
+  toonInfoEenmalig();
   // Pendel: zoals bij een omloop eerst kiezen met welke rit (heen of terug) je begint.
   if (route.pendel) { toonOverzicht(); return; }
   await gaNaarRit(0, false);
