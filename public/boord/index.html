@@ -152,6 +152,11 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker .tl li.nu{background:#13241a}
 #rij.donker .tl li.volgend::before{border-color:#fff}
 #rij.donker .tl li:active{background:#16202b}
+#infoban{display:flex; align-items:flex-start; gap:8px; background:#fff4c2; color:#3d2e00; border-bottom:1px solid #e8c95a; padding:8px 12px; font-size:15px; line-height:1.35; font-weight:600}
+#infoban[hidden]{display:none}
+#infoban .t{flex:1; white-space:pre-wrap; overflow-wrap:anywhere}
+#infoban button{background:transparent; border:0; color:inherit; font:700 16px system-ui; padding:0 4px; cursor:pointer}
+#infoban.klein .t{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #rij.geenhaltes #tp{display:none} /* vrije rit zonder haltes: geen haltebalk, de kaart loopt door */
 #rij.donker #tp{background:#161b22; color:#f2f4f7; border-left-color:var(--lijn)}
 #rij.donker #tp::before{background:var(--bg); border-color:var(--muted)}
@@ -413,6 +418,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
   </div>
   <div id="tp"><span class="tpt" id="tptijd">--:--</span><span class="tpn" id="tpnaam">–</span></div>
+  <div id="infoban" hidden><span>ℹ️</span><span class="t" id="infobantxt"></span><button id="infobanx" aria-label="Info kleiner of groter">▴</button></div>
   <div id="body">
     <div id="lijstwrap"><ul class="tl" id="tl"></ul></div>
     <div id="kaart"></div>
@@ -1195,7 +1201,14 @@ function kiesHuidigeRit() {
   for (let i = 0; i < rt.length; i++) { const v = _toMin(rt[i][4]); if (v != null && v >= n) return i; } // eerstvolgend
   return rt.length - 1;
 }
+// Infobanner van een opgeslagen route (in te vullen op /extra). Tik = kleiner (één regel) of weer groot.
+function zetInfoBanner() {
+  const t = (OMLOOP && OMLOOP.vrij && OMLOOP.info) || "";
+  $("infoban").hidden = !t; $("infobantxt").textContent = t;
+}
+$("infoban").onclick = () => { const k = $("infoban").classList.toggle("klein"); $("infobanx").textContent = k ? "▾" : "▴"; if (kaart) setTimeout(() => kaart.invalidateSize(), 50); };
 async function gaNaarRit(i, viaPauze) {
+  zetInfoBanner();
   _legeModus = false; _legeBezig = false; // we stappen in een echte dienstrit, geen lege rit meer
   RITI = Math.max(0, Math.min(OMLOOP.ritten.length - 1, i));
   _omloopKlaar = false; _eindBezig = false; // einde-melding resetten voor de nieuwe rit
@@ -2349,7 +2362,7 @@ async function startVrijeRit(route) {
   }
   OMLOOP = {
     afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, pendel: !!route.pendel, naam: route.naam,
-    geenHaltes: !!route.geenHaltes, routes, busnr: "", busType: "", ritten,
+    geenHaltes: !!route.geenHaltes, routes, busnr: "", busType: "", ritten, info: String(route.info || "").trim(),
   };
   try { localStorage.setItem("vrijeRoute", JSON.stringify(route)); } catch {}
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
@@ -2394,7 +2407,7 @@ async function vrijLaadLijst() {
 }
 // Opgeslagen route (uit /api/route) → route-object; een pendel krijgt een terugrit (eigen GPX of omgekeerd).
 function vrijUitOpgeslagen(o) {
-  const route = vrijUitGpx(o.gpx); route.naam = o.naam;
+  const route = vrijUitGpx(o.gpx); route.naam = o.naam; route.info = o.info || "";
   if (o.pendel) {
     route.pendel = true; if (o.gpxTerug) { route.terug = vrijUitGpx(o.gpxTerug); route.terug.naam = o.naam; }
     // Zelf toegevoegde begin/einde-haltes bij een pendel duidelijker noemen: beginpunt en keerpunt.

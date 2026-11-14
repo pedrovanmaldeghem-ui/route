@@ -235,7 +235,7 @@ async function apiNet(req, env, c) {
 // Gent Sint-Pieters". De boordcomputer toont de lijst en rijdt een gekozen route zonder uren.
 // Eén route laden via haar (lange, willekeurige) id kan zonder login: dat is de link voor de chauffeur.
 // De lijst vraagt een login (recht Kijken); opslaan en verwijderen het recht Bouwer.
-// KV: "routemeta/<id>" = { id, naam, km, haltes, gewijzigd } (klein, voor de lijst), "route/<id>" = de GPX.
+// KV: "routemeta/<id>" = { id, naam, km, haltes, gewijzigd, info? (infobanner), pendel?, kmTerug? } (klein, voor de lijst), "route/<id>" = de GPX.
 const MAX_GPX = 3 * 1024 * 1024;
 async function apiRoute(req, env, c) {
   if (req.method !== "POST") return json({ fout: "methode" }, 405);
@@ -298,10 +298,25 @@ async function apiRoute(req, env, c) {
     }
     if (!id) id = "rt_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20); // niet te raden
     const meta = { id, naam, km: Math.round((Number(b.km) || 0) * 100) / 100, haltes: Math.max(0, parseInt(b.haltes, 10) || 0), gewijzigd: Date.now() };
+    // Geen info meegestuurd (bv. opnieuw opslaan vanuit de tekenaar): de bestaande infobanner behouden.
+    let info = String(b.info || "").trim().slice(0, 500);
+    if (b.info === undefined) { const oud = await c.st.getJSONveilig(`routemeta/${id}`, null); info = (oud && oud.info) || ""; }
+    if (info) meta.info = info;
     if (pendel) { meta.pendel = true; meta.kmTerug = Math.round((Number(b.kmTerug) || 0) * 100) / 100; }
     await c.st.set(`route/${id}`, gpx);
     if (pendel) await c.st.set(`routeterug/${id}`, gpxTerug);
     else await c.st.delete(`routeterug/${id}`).catch(() => {});
+    await c.st.setJSON(`routemeta/${id}`, meta);
+    return json({ ok: true, route: meta });
+  }
+  // Enkel de infobanner (tekst voor de chauffeur) van een bestaande route aanpassen.
+  if (actie === "info") {
+    const id = netId(b.id);
+    const meta = await c.st.getJSONveilig(`routemeta/${id}`, null);
+    if (!meta) return json({ fout: "Route niet gevonden." }, 404);
+    const info = String(b.info || "").trim().slice(0, 500);
+    if (info) meta.info = info; else delete meta.info;
+    meta.gewijzigd = Date.now();
     await c.st.setJSON(`routemeta/${id}`, meta);
     return json({ ok: true, route: meta });
   }
