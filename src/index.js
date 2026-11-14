@@ -21,7 +21,7 @@ async function metGeheimen(env) {
   return uit;
 }
 
-// Toegang beperken tot de Benelux, zoals Lijnkijker. Zet de variabele GEO_OPEN = "1" om dat uit te zetten.
+// De site staat open voor alle landen. Zet de gewone variabele GEO_BENELUX = "1" om ze te beperken tot de Benelux.
 const BENELUX = new Set(["BE", "NL", "LU"]);
 
 // Korte namen. (/eigennet, /haltebord, /eigenkaart, /admin en /login werken vanzelf: Cloudflare
@@ -45,7 +45,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const land = req.cf && req.cf.country;
-    if (env.GEO_OPEN !== "1" && land && !BENELUX.has(land)) {
+    if (env.GEO_BENELUX === "1" && land && !BENELUX.has(land)) {
       return new Response("Deze site is enkel toegankelijk vanuit de Benelux (België, Nederland, Luxemburg).", { status: 403, headers: { "content-type": "text/plain; charset=utf-8" } });
     }
     // /brouter: BRouter-web openen met ons busprofiel al ingesteld. Het profiel wordt telkens vers naar de

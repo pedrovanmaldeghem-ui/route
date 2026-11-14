@@ -44,7 +44,7 @@ Opslag: KV `EIGENNET` (netten onder `eigennet:net/<id>`, vaste routes onder `eig
 
 ```bash
 npm install
-printf 'AUTH_SECRET=test\nADMIN_WACHTWOORD=beheer\nGEO_OPEN=1\n' > .dev.vars
+printf 'AUTH_SECRET=test\nADMIN_WACHTWOORD=beheer\n' > .dev.vars
 npx wrangler dev
 ```
 

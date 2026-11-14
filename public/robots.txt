@@ -1,0 +1,4 @@
+# Alle zoekmachines en chatbots zijn welkom. Alleen de API is niet om te crawlen.
+User-agent: *
+Allow: /
+Disallow: /api/
