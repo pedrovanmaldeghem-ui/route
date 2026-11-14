@@ -321,14 +321,28 @@ async function apiEigenpos(req, env, c) {
       return json({ ok: true });
     } catch { return json({ ok: false, fout: "Opslaan van positie mislukt." }); }
   }
-  const v = await c.st.getJSONveilig(`net/${id}`, null);
-  if (!v) return json({ fout: "Net niet gevonden." }, 404);
-  const net = schoonNet(v, v);
+  // Kijkers (live kaart, haltebord) vragen dit elke 15 s op. Om KV en D1 te sparen bij veel kijkers
+  // onthoudt elke Worker-instantie het net 60 s en de posities 5 s.
+  const nu = Date.now();
+  let n = _posNet.get(id);
+  if (!n || nu - n.t > 60000) {
+    const v = await c.st.getJSONveilig(`net/${id}`, null);
+    n = { t: nu, net: v ? schoonNet(v, v) : null };
+    _posNet.set(id, n);
+  }
+  const net = n.net;
+  if (!net) return json({ fout: "Net niet gevonden." }, 404);
   if (!net.publiekHaltebord && !(await heeftRecht(req, env, c, "kijken"))) return json({ fout: "Niet openbaar." }, 403);
-  let buses = [];
-  try { buses = await d1LeesEigenpos(env, id, 180000); } catch { buses = []; }
-  return json({ naam: net.naam, buses }, 200, { "cache-control": "max-age=5" });
+  let p = _posLees.get(id);
+  if (!p || nu - p.t > 5000) {
+    let buses = [];
+    try { buses = await d1LeesEigenpos(env, id, 180000); } catch { buses = []; }
+    p = { t: nu, buses };
+    _posLees.set(id, p);
+  }
+  return json({ naam: net.naam, buses: p.buses }, 200, { "cache-control": "max-age=5" });
 }
+const _posNet = new Map(), _posLees = new Map();
 
 // De boordcomputer meldt welke omloop gestart wordt; hier hoeft dat niet bijgehouden te worden.
 const apiStil = async () => json({ ok: true });

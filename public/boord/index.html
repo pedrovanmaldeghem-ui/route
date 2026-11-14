@@ -1687,7 +1687,7 @@ function startPosDelen() {
   if (!(OMLOOP && OMLOOP.eigen && OMLOOP.busnr)) return;
   const stuur = () => {
     if (!(OMLOOP && OMLOOP.eigen && OMLOOP.busnr) || !laatstePos) return;
-    const now = Date.now(); if (now - _posLaatst < 20000) return; _posLaatst = now;
+    const now = Date.now(); if (now - _posLaatst < 10000) return; _posLaatst = now;
     const rij = RIT || {};
     // Vertraging (min, + = te laat): geplande tijd op de huidige positie langs de route vs. de klok.
     // Enkel als we netjes op de route zitten (niet off-route, geen lege-rit-zonder-route).
@@ -1707,7 +1707,7 @@ function startPosDelen() {
       }),
     }).catch(() => {});
   };
-  _posTimer = setInterval(stuur, 10000);
+  _posTimer = setInterval(stuur, 15000); // elke 15 s een positie naar de live kaart
   setTimeout(stuur, 3000); // snelle eerste melding
 }
 function stopPosDelen() { if (_posTimer) { clearInterval(_posTimer); _posTimer = null; } }

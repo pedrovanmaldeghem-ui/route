@@ -3,12 +3,13 @@ main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Statische bestanden uit public/. run_worker_first: de Worker draait vóór elk verzoek, zodat het
-# Benelux-slot ook op de pagina's geldt.
+# Statische bestanden uit public/. run_worker_first: de Worker draait vóór de pagina's en de API, zodat
+# het Benelux-slot daar geldt. Vaste bestanden (iconen, scripts, busnet-tegels) gaan er rechtstreeks
+# langs: die zijn gratis en tellen niet mee in de 100.000 verzoeken per dag van het gratis plan.
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = true
+run_worker_first = ["/*", "!/img/*", "!/vendor/*", "!/busnet/*", "!/routetekenaar/*", "!/favicon.ico", "!/apple-touch-icon.png", "!/boord/modus.js"]
 
 # KV: de netten (net/<id>) en de accounts. Maak in het NIEUWE Cloudflare-account een namespace aan
 # (Storage & Databases -> KV -> Create, naam "eigennet") en plak de id hieronder.
