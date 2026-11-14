@@ -129,10 +129,21 @@
 
   // ---- Kaart ----------------------------------------------------------
   var map = L.map('rt-map', { doubleClickZoom: false }).setView(START_VIEW, START_ZOOM);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bijdragers'
-  }).addTo(map);
+  // Kaartlagen zoals op openstreetmap.org (enkel de lagen die zonder sleutel bruikbaar zijn) + luchtfoto.
+  // De gekozen laag wordt onthouden.
+  var OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bijdragers';
+  var lagen = {
+    'Standaard': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTR }),
+    'Openbaar vervoer (ÖPNVKarte)': L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', { maxZoom: 18, attribution: OSM_ATTR + ', kaart <a href="https://memomaps.de/">memomaps.de</a>' }),
+    'Fietskaart (CyclOSM)': L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', { maxZoom: 20, subdomains: 'abc', attribution: OSM_ATTR + ', stijl <a href="https://www.cyclosm.org/">CyclOSM</a>' }),
+    'Humanitair': L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', attribution: OSM_ATTR + ', stijl <a href="https://www.hotosm.org/">HOT</a>' }),
+    'Luchtfoto': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Luchtfoto &copy; Esri, Maxar, Earthstar Geographics' })
+  };
+  var laagNaam = 'Standaard';
+  try { var bewaard = localStorage.getItem('rt-laag'); if (bewaard && lagen[bewaard]) laagNaam = bewaard; } catch (e) {}
+  lagen[laagNaam].addTo(map);
+  L.control.layers(lagen, null, { position: 'topright', collapsed: true }).addTo(map);
+  map.on('baselayerchange', function (e) { try { localStorage.setItem('rt-laag', e.name); } catch (er) {} });
 
   // ---- Toestand -------------------------------------------------------
   // Elk punt: { latlng, marker, stop, name, modeIn, coordsIn, lineIn, req }
