@@ -241,9 +241,9 @@ async function apiRoute(req, env, c) {
   if (req.method !== "POST") return json({ fout: "methode" }, 405);
   const b = await req.json().catch(() => ({}));
   const actie = b.actie || "lijst";
-  if (actie === "lijst" || actie === "laad") {
+  if (actie === "lijst" || actie === "laad" || actie === "haltes") {
     // Een route laden kan zonder login (de rechtstreekse link voor de chauffeur); de lijst niet.
-    if (actie === "lijst" && !(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
+    if (actie !== "laad" && !(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
     if (actie === "laad") {
       const id = netId(b.id);
       const [meta, gpx] = await Promise.all([c.st.getJSONveilig(`routemeta/${id}`, null), c.st.get(`route/${id}`)]);
@@ -252,6 +252,26 @@ async function apiRoute(req, env, c) {
       return json({ route: { ...meta, gpx, gpxTerug } });
     }
     const { blobs } = await c.st.list({ prefix: "routemeta/" });
+    if (actie === "haltes") {
+      // Alle haltes (waypoints) uit de opgeslagen routes, zodat de tekenaar er een nieuwe route mee kan
+      // beginnen. Dubbels (zelfde naam, binnen ~20 m) maar één keer.
+      const uit = [], gezien = new Set();
+      const ids = blobs.map(({ key }) => key.slice("routemeta/".length));
+      const gpxen = await Promise.all(ids.flatMap((id) => [c.st.get(`route/${id}`), c.st.get(`routeterug/${id}`)]));
+      for (const g of gpxen) {
+        if (!g) continue;
+        for (const m of String(g).matchAll(/<wpt\b([^>]*)>([\s\S]*?)<\/wpt>/g)) {
+          const lat = Number((m[1].match(/lat="([-\d.]+)"/) || [])[1]), lon = Number((m[1].match(/lon="([-\d.]+)"/) || [])[1]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          const naam = ((m[2].match(/<name>([\s\S]*?)<\/name>/) || [])[1] || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").trim().slice(0, 80);
+          const k = `${naam}|${lat.toFixed(4)}|${lon.toFixed(4)}`;
+          if (gezien.has(k)) continue;
+          gezien.add(k); uit.push({ naam, lat: +lat.toFixed(6), lon: +lon.toFixed(6) });
+          if (uit.length >= 5000) break;
+        }
+      }
+      return json({ haltes: uit });
+    }
     const routes = (await Promise.all(blobs.map(({ key }) => c.st.getJSONveilig(key, null)))).filter(Boolean);
     routes.sort((a, z) => String(a.naam).localeCompare(String(z.naam), "nl"));
     return json({ routes });

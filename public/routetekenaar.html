@@ -60,6 +60,7 @@
     <button type="button" id="rt-import">GPX openen</button>
     <input type="file" id="rt-file" accept=".gpx,application/gpx+xml" hidden>
     <button type="button" id="rt-busnet" title="Waar de bussen van De Lijn, TEC en MIVB echt rijden (vanaf zoomniveau 13)"><span class="rt-busleg" style="background:#7c3aed"></span>Buslijnen tonen</button>
+    <button type="button" id="rt-haltes" class="rt-active" title="Haltes uit je opgeslagen routes tonen. Klik erop om je route daar te beginnen (of verder te tekenen)."><span class="rt-busleg" style="background:#f59e0b;height:8px;width:8px;border-radius:50%"></span>Eerdere haltes</button>
     <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
     <button type="button" id="rt-brouter" title="Open dezelfde kaartplek in BRouter-web, met uitleg en het busprofiel">BRouter-web…</button>
     <button type="button" id="rt-opslaan" title="Deze route op de site bewaren, zodat ze in de boordcomputer klaarstaat">Opslaan op de site</button>
@@ -108,6 +109,7 @@
     Klik op de kaart om punten toe te voegen. <b>Weg volgen</b> volgt de weg, <b>Vrij tekenen</b> trekt een rechte lijn (handig over busperrons).
     <b>Weg volgen</b> rijdt zoals een bus: ook over busbanen, busstraten en door busvallen.
     <b>Buslijnen volgen</b> volgt de echte busritten van De Lijn, TEC en MIVB, dus ook waar de kaart een knip of eenrichtingsstraat toont waar bussen toch door mogen.
+    Klik op een <b>oranje bolletje</b> (halte uit een eerder opgeslagen route) om je route daar te beginnen of erlangs te tekenen; het punt wordt meteen een halte met die naam.
     Sleep een punt om het te verplaatsen. Klik op een punt om er een halte van te maken of het te verwijderen. Klik op een stuk lijn om het te wisselen tussen weg volgen en vrij.
   </div>
 </div>
@@ -847,6 +849,34 @@
     else { map.removeLayer(busLaag); delete el('rt-info').dataset.bus; updateInfo(); }
   }
   map.on('moveend', function () { clearTimeout(busTimer); busTimer = setTimeout(busLaad, 600); });
+
+  // ---- Eerdere haltes -------------------------------------------------
+  // Haltes uit de opgeslagen routes als oranje bolletjes. Klikken = een punt (halte met die naam) op
+  // die plek toevoegen, dus bv. een nieuwe route beginnen aan een halte die je al eens tekende.
+  var ehLaag = L.layerGroup(), ehAan = true, ehGeladen = false;
+  function ehLaad() {
+    if (ehGeladen) return;
+    ehGeladen = true;
+    routeApi({ actie: 'haltes' }).then(function (d) {
+      (d.haltes || []).forEach(function (h) {
+        var m = L.circleMarker([h.lat, h.lon], { radius: 6, color: '#92400e', weight: 1.5, fillColor: '#fbbf24', fillOpacity: 0.85, bubblingMouseEvents: false })
+          .bindTooltip((h.naam || 'Halte') + '<br><small>klik om hier een halte te zetten</small>', { direction: 'top', offset: [0, -6] });
+        m.on('click', function (e) {
+          L.DomEvent.stopPropagation(e);
+          addPoint(L.latLng(h.lat, h.lon), { stop: true, name: h.naam || '' });
+        });
+        m.addTo(ehLaag);
+      });
+    }).catch(function (e) { ehGeladen = false; console.warn('Eerdere haltes:', e); });
+  }
+  function ehZet(aan) {
+    ehAan = aan;
+    el('rt-haltes').classList.toggle('rt-active', aan);
+    if (aan) { ehLaag.addTo(map); ehLaad(); } else map.removeLayer(ehLaag);
+  }
+  el('rt-haltes').addEventListener('click', function () { ehZet(!ehAan); });
+  ehZet(true);
+  window.rtEerdereHaltes = function () { return ehLaag.getLayers().length; }; // voor tests
 
   // ---- Bediening ------------------------------------------------------
   map.on('click', function (e) { addPoint(e.latlng); });
