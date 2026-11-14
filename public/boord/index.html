@@ -1135,17 +1135,19 @@ let _enkelRef = null;          // referentie-afstand voor de voortgangsbalk bij 
 // passende rit in het grijs. Alle ritten blijven staan, ook die uit het verleden.
 function toonOverzicht() {
   stopGps(); clearInterval(window._rt); clearInterval(window._pt);
-  _ovzBest = kiesHuidigeRit();
+  _ovzBest = OMLOOP.vrij ? 0 : kiesHuidigeRit();
   const afk = OMLOOP.afk, snr = OMLOOP.key.split("-")[0] || "", oml = OMLOOP.key.split("-")[1] || OMLOOP.key;
   const naam = OMLOOP.eigen ? (OMLOOP.naam || "Eigen net") : ((INDEX.find(e => e.afk === afk) || {}).naam || afk);
-  $("ovzkop").innerHTML = `<div class="ovz-dag">${esc(dagLabel(OMLOOP.dag))}</div>` +
+  $("ovzkop").innerHTML = OMLOOP.vrij
+    ? `<div class="ovz-sp">${esc(OMLOOP.naam || "Route")} · ${OMLOOP.pendel ? "pendel" : "zonder dienstregeling"}</div>`
+    : `<div class="ovz-dag">${esc(dagLabel(OMLOOP.dag))}</div>` +
     (OMLOOP.eigen
       ? `<div class="ovz-sp">${esc(naam)} · omloop ${esc(oml)}</div>`
       : `<div class="ovz-sp">${esc(naam)} <span>(${esc(afk)} ${esc(snr)})</span> · omloop ${esc(oml)}</div>`) +
     (OMLOOP.eigen
       ? `<div class="ovz-bus"><label>Bus <input id="busnrIn" inputmode="numeric" placeholder="bv. 5059" value="${esc(OMLOOP.busnr || "")}"></label><label>Type <input id="busTypeIn" placeholder="bv. Jonckheere Transcity (optioneel)" value="${esc(OMLOOP.busType || "")}"></label></div>`
       : "");
-  if (OMLOOP.eigen) {
+  if (OMLOOP.eigen && !OMLOOP.vrij) {
     const id = OMLOOP.afk.slice(6), bn = $("busnrIn"), bt = $("busTypeIn");
     const bewaar = () => { OMLOOP.busnr = (bn && bn.value.trim()) || ""; OMLOOP.busType = (bt && bt.value.trim()) || ""; eigenBusBewaar(id, OMLOOP.busnr, OMLOOP.busType); };
     if (bn) bn.oninput = bewaar;
@@ -1156,7 +1158,7 @@ function toonOverzicht() {
   let h = "";
   kept.forEach(({ r, i }, k) => {
     // Vóór de allereerste rit van de omloop: lege rit vanaf de stelplaats (aankomst = vertrek eerste rit).
-    if (k === 0 && i === 0) {
+    if (k === 0 && i === 0 && !OMLOOP.vrij) {
       const li = _legeRitten.push({ soort: "start", volgende: i }) - 1;
       h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${r[4] ? "–" + esc(r[4]) : ""}</span><span class="rl">ledig</span><span class="rp">stelplaats → ${esc(r[2])}</span></button>`;
     }
@@ -1166,16 +1168,18 @@ function toonOverzicht() {
       h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${(leeg.vert && leeg.aank) ? esc(leeg.vert) + "–" + esc(leeg.aank) : ""}</span><span class="rl">ledig</span><span class="rp">${esc(leeg.van)} → ${esc(leeg.naar)}</span></button>`;
     }
     h += `<button class="knop ovz-rit${i === _ovzBest ? " best" : ""}" data-riti="${i}">` +
-      `<span class="rn">${esc(r[4])}–${esc(r[5])}</span><span class="rl">${esc(r[1])}</span>` +
+      `<span class="rn">${OMLOOP.vrij ? (r[8] === "terug" ? "Terugrit" : r[8] === "heen" ? "Heenrit" : "Route") : esc(r[4]) + "–" + esc(r[5])}</span><span class="rl">${esc(r[1])}</span>` +
       `<span class="rp">${esc(r[2])} → ${esc(r[3])}${r[7] ? " · " + esc(r[7].toFixed(1).replace(".", ",")) + " km" : ""}</span></button>`;
     // Na de allerlaatste rit van de omloop: lege rit terug naar de stelplaats (vertrek = aankomst laatste rit).
-    if (k === kept.length - 1 && i === OMLOOP.ritten.length - 1) {
+    if (k === kept.length - 1 && i === OMLOOP.ritten.length - 1 && !OMLOOP.vrij) {
       const li = _legeRitten.push({ soort: "eind", vorige: i }) - 1;
       h += `<button class="knop ovz-rit leegrit" data-leeg="${li}"><span class="rn">${r[5] ? esc(r[5]) + "–" : ""}</span><span class="rl">ledig</span><span class="rp">${esc(r[3])} → stelplaats</span></button>`;
     }
   });
   $("ovzlijst").innerHTML = h || `<p class="hint">Geen ritten meer vandaag voor deze omloop.</p>`;
-  if (OMLOOP.eigen) $("ovzlijst").insertAdjacentHTML("beforeend", `<p class="hint">Eigen net. Tik op een rit voor de haltes, uren en de route op de kaart (met live gps-volgen).</p>`);
+  if (OMLOOP.pendel) $("ovzlijst").insertAdjacentHTML("beforeend", `<p class="hint">Pendel: kies met welke rit je begint. Daarna wisselen heen- en terugrit vanzelf af, zonder einde.</p>`);
+  else if (OMLOOP.vrij) $("ovzlijst").insertAdjacentHTML("beforeend", `<p class="hint">Route zonder dienstregeling.</p>`);
+  else if (OMLOOP.eigen) $("ovzlijst").insertAdjacentHTML("beforeend", `<p class="hint">Eigen net. Tik op een rit voor de haltes, uren en de route op de kaart (met live gps-volgen).</p>`);
   toon("overzicht");
   setTimeout(() => { const b = $("ovzlijst").querySelector(".best"); if (b) b.scrollIntoView({ block: "center" }); }, 30);
 }
@@ -1214,6 +1218,8 @@ async function gaNaarRit(i, viaPauze) {
 // Sequentiële overgang naar de volgende beladen rit (automatisch op het einde van een rit, of handmatig
 // door op de eindhalte te tikken). Zit er een lege (materiaal)rit tussen de huidige en de volgende rit,
 // dan rijden we die eerst actief; lukt het opbouwen niet (geen routegegevens), dan meteen de volgende rit.
+// Index van de rit hierna: bij een pendel na de terugrit weer de heenrit (eindeloos), anders gewoon +1.
+function volgendeRitIdx() { return OMLOOP && OMLOOP.pendel ? (RITI + 1) % OMLOOP.ritten.length : RITI + 1; }
 async function naVolgendeRit(vanIndex, naarIndex) {
   const leeg = legeRitTussen(OMLOOP.ritten[vanIndex], OMLOOP.ritten[naarIndex]);
   if (leeg && await startLegeRit({ soort: "tussen", vorige: vanIndex, volgende: naarIndex })) return;
@@ -1306,7 +1312,7 @@ function vulVolgStrip() {
     strip.innerHTML = hl; return;
   }
   if (OMLOOP.vrij) {
-    const vol = OMLOOP.pendel ? OMLOOP.ritten[RITI + 1] : null;
+    const vol = OMLOOP.pendel ? OMLOOP.ritten[volgendeRitIdx()] : null;
     strip.innerHTML = `<div class="vs-rij"><span class="vs-n">${esc(RIT.naar || "")}</span></div>` + (vol
       ? `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Pendel · hierna ${vol[8] === "terug" ? "terug" : "heen"} naar ${esc(vol[3])}</span></div>`
       : `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Vrije rit, zonder dienstregeling</span></div>`);
@@ -1616,7 +1622,7 @@ function toonRitscore(res, laatste) {
 }
 function eindeRit(bereikt) {
   if (_eindBezig || _omloopKlaar) return;
-  const laatste = RITI + 1 >= OMLOOP.ritten.length;
+  const laatste = !OMLOOP.pendel && RITI + 1 >= OMLOOP.ritten.length;
   const res = (!_legeModus && !OMLOOP.vrij) ? berekenScore(_ritStat) : null;
   if (laatste) {
     _omloopKlaar = true;
@@ -1626,10 +1632,10 @@ function eindeRit(bereikt) {
   }
   _eindBezig = true;
   if (res) toonRitscore(res, false);
-  else if (OMLOOP.pendel) toast(`Keren — ${OMLOOP.ritten[RITI + 1][8] === "terug" ? "terugrit" : "heenrit"} naar ${OMLOOP.ritten[RITI + 1][3]}`, 4000);
+  else if (OMLOOP.pendel) { const v = OMLOOP.ritten[volgendeRitIdx()]; toast(`Keren — ${v[8] === "terug" ? "terugrit" : "heenrit"} naar ${v[3]}`, 4000); }
   else if (!bereikt) toast("Eindhalte niet bereikt — volgende rit", 4000);
   // Na 3 s naar de volgende rit — via de eventuele lege rit ertussen (zie naVolgendeRit).
-  setTimeout(() => { _eindBezig = false; naVolgendeRit(RITI, RITI + 1); }, 3000);
+  setTimeout(() => { _eindBezig = false; naVolgendeRit(RITI, volgendeRitIdx()); }, 3000);
 }
 
 /* ===== gps ===== */
@@ -2150,9 +2156,12 @@ $("ververs").onclick = () => refreshData(false);
 // Omloop-overzicht: tik een rit om er meteen te starten, of gebruik de Start-knop (best passende rit).
 $("ovzlijst").addEventListener("click", e => {
   const l = e.target.closest("button[data-leeg]"); if (l) { startLegeRit(_legeRitten[+l.dataset.leeg]); return; }
-  const b = e.target.closest("button[data-riti]"); if (b) gaNaarRit(+b.dataset.riti, true);
+  const b = e.target.closest("button[data-riti]");
+  if (b) ovzStartRit(+b.dataset.riti);
 });
-$("ovzStart").onclick = () => gaNaarRit(_ovzBest, true);
+// Route zonder haltes: na het kiezen meteen de kaart (zoals bij het starten van een vrije rit).
+function ovzStartRit(i) { gaNaarRit(i, true).then(() => { if (OMLOOP && OMLOOP.vrij && OMLOOP.geenHaltes && RIT) $("btnKaart").click(); }); }
+$("ovzStart").onclick = () => ovzStartRit(_ovzBest);
 $("ovzTerug").onclick = () => { stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); vrijToonLaatste(); vrijLaadLijst(); };
 $("menu").addEventListener("click", e => {
   const tr = e.target.closest("button[data-tref]"); if (tr) { startOmloop(_treffers[+tr.dataset.tref]); return; }
@@ -2169,7 +2178,7 @@ $("tl").addEventListener("click", e => {
   // Tik op de laatste halte van een rit (leeg of beladen) → meteen over naar de volgende rit.
   if (RIT && i === RIT.halten.length - 1) {
     if (_legeModus) { const v = _legeVolg; _legeModus = false; _legeBezig = false; if (v != null) gaNaarRit(v, true); else toonOverzicht(); return; }
-    if (RITI + 1 < OMLOOP.ritten.length) { naVolgendeRit(RITI, RITI + 1); return; }
+    if (OMLOOP.pendel || RITI + 1 < OMLOOP.ritten.length) { naVolgendeRit(RITI, volgendeRitIdx()); return; }
     toast("Dit is de laatste rit van de omloop."); return;
   }
   kiesVertrekHalte(i);
@@ -2323,7 +2332,7 @@ function vrijOmgekeerd(r) {
   const h = r.haltes.slice().reverse().map((x, i, a) => [x[0], x[1], x[2], i + 1 < a.length ? (a[i + 1][3] || 0) : 0]);
   return { naam: r.naam, haltes: h, pts: r.pts.slice().reverse(), km: r.km, geenHaltes: r.geenHaltes };
 }
-const PENDEL_RITTEN = 200; // heen-terug-heen-terug… tot de chauffeur stopt
+// Pendel: twee ritten (heen en terug) die eindeloos afwisselen, tot de chauffeur stopt (zie volgendeRitIdx).
 async function startVrijeRit(route) {
   const n = Math.ceil(nu());
   const wd = new Date().getDay() || 7;
@@ -2333,11 +2342,7 @@ async function startVrijeRit(route) {
   if (route.pendel) {
     const heen = route, terug = route.terug || vrijOmgekeerd(route);
     routes = { heen: { haltes: heen.haltes, pts: heen.pts }, terug: { haltes: terug.haltes, pts: terug.pts } };
-    ritten = []; let t = n;
-    for (let i = 0; i < PENDEL_RITTEN; i++) {
-      const r = i % 2 ? terug : heen;
-      ritten.push(rij(r, i % 2 ? "terug" : "heen", i % 2 ? "T" : "H", t)); t += duur(r);
-    }
+    ritten = [rij(heen, "heen", "H", n), rij(terug, "terug", "T", n + duur(heen))];
   } else {
     routes = { vrij: { haltes: route.haltes, pts: route.pts } };
     ritten = [rij(route, "vrij", "", n)];
@@ -2350,6 +2355,8 @@ async function startVrijeRit(route) {
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
   let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
   if (eerste) toonIntro();
+  // Pendel: zoals bij een omloop eerst kiezen met welke rit (heen of terug) je begint.
+  if (route.pendel) { toonOverzicht(); return; }
   await gaNaarRit(0, false);
   // Zonder haltes heeft de haltelijst geen zin: meteen de kaart.
   if (OMLOOP && OMLOOP.geenHaltes && RIT) $("btnKaart").click();
