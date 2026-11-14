@@ -152,6 +152,13 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker .tl li.nu{background:#13241a}
 #rij.donker .tl li.volgend::before{border-color:#fff}
 #rij.donker .tl li:active{background:#16202b}
+#livebalk{position:fixed; top:0; left:0; right:0; z-index:1300; display:none; align-items:flex-start; gap:10px; background:#1d4ed8; color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 12px 12px; box-shadow:0 4px 16px rgba(0,0,0,.35); font:700 18px/1.35 system-ui}
+#livebalk.aan{display:flex; animation:liveIn .25s ease-out}
+@keyframes liveIn{from{transform:translateY(-100%)}to{transform:none}}
+#livebalk .t{flex:1; white-space:pre-wrap; overflow-wrap:anywhere}
+#livebalk small{display:block; font-weight:500; font-size:13px; opacity:.85}
+#livebalk button{background:rgba(255,255,255,.2); color:#fff; border:0; border-radius:8px; font:700 18px system-ui; padding:6px 12px}
 #infoov{position:fixed; inset:0; z-index:1190; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; padding:20px}
 #infoov.aan{display:flex}
 #infoov .blok{background:#fff4c2; color:#3d2e00; border-radius:12px; padding:20px; max-width:480px; width:100%; box-shadow:0 10px 30px rgba(0,0,0,.4)}
@@ -501,6 +508,8 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 </div>
 
 <!-- Opstartscherm: logo + disclaimer/privacy/bronvermelding (wegklikken om te starten) -->
+<!-- Live bericht van de beheerder: bovenaan als melding, blijft staan tot de chauffeur ✕ tikt -->
+<div id="livebalk" role="alert"><span>📢</span><div class="t"><small id="livetijd"></small><span id="livetxt"></span></div><button id="liveSluit" aria-label="Bericht sluiten">✕</button></div>
 <!-- Infobanner van een opgeslagen route: één keer bij het openen, wegklikken met OK -->
 <div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3 id="infoovKop">ℹ️ Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
 <div id="intro">
@@ -1229,14 +1238,19 @@ function startLiveBericht() {
       let gezien = 0; try { gezien = +localStorage.getItem(gezienKey) || 0; } catch {}
       if (b.t <= gezien) return;
       try { localStorage.setItem(gezienKey, String(b.t)); } catch {}
-      $("infoovKop").textContent = "📢 Bericht"; $("infoovtxt").textContent = b.tekst; $("infoov").classList.add("aan");
+      $("livetijd").textContent = "Bericht · " + new Date(b.t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" });
+      $("livetxt").textContent = b.tekst; $("livebalk").classList.add("aan");
       try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
       try { const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
         o.frequency.value = 880; o.connect(g); g.connect(ac.destination); g.gain.value = 0.2; o.start(); o.stop(ac.currentTime + 0.35); } catch {}
     } catch {}
   };
   kijk(); _liveTimer = setInterval(kijk, 30000);
+  // Telefoons vertragen timers op de achtergrond: bij terugkeren naar de app meteen kijken.
+  window._liveKijk = kijk;
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && window._liveKijk) window._liveKijk(); });
+$("liveSluit").onclick = () => $("livebalk").classList.remove("aan");
 $("infoovOk").onclick = () => $("infoov").classList.remove("aan");
 async function gaNaarRit(i, viaPauze) {
   _legeModus = false; _legeBezig = false; // we stappen in een echte dienstrit, geen lege rit meer
