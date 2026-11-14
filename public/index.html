@@ -7,6 +7,7 @@
 <link rel="icon" href="/img/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
+.ritkaart { height: 260px; border-radius: 8px; margin: 6px 0 10px; border: 1px solid #d0d5dd; }
 :root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --accent:#1f5f8b; --good:#2d7d46; --bad:#c0392b; --rij:#f1f3f6; }
 @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; --accent:#6ab0e0; --rij:#23282e; } }
 * { box-sizing:border-box }
@@ -140,10 +141,36 @@ $("lijst").addEventListener("click", (e) => {
   else {
     let t = toMin(tr.dataset.vert) || 0;
     const li = rt.haltes.map((h, i) => { const s = `<li><span class="t">${i === rt.haltes.length - 1 && tr.dataset.aank ? esc(tr.dataset.aank) : fmtMin(t)}</span>${esc(h[0])}</li>`; t += +h[3] || 0; return s; });
-    inh = `<ol class="halten">${li.join("")}</ol>`;
+    inh = `<div class="ritkaart"></div><ol class="halten">${li.join("")}</ol>`;
   }
   const r = document.createElement("tr"); r.className = "ritdet"; r.innerHTML = `<td colspan="7" style="white-space:normal">${inh}</td>`; tr.after(r);
+  const kd = r.querySelector(".ritkaart"); if (kd) tekenRitKaart(kd, rt);
 });
+
+// Kaartje met de route van één rit (lijn + haltes). Leaflet wordt pas geladen bij de eerste rit.
+let _leaflet = null;
+function laadLeaflet() {
+  if (_leaflet) return _leaflet;
+  _leaflet = new Promise((ok, nok) => {
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; js.onload = () => ok(window.L); js.onerror = nok; document.head.appendChild(js);
+  });
+  return _leaflet;
+}
+async function tekenRitKaart(div, rt) {
+  try {
+    const L = await laadLeaflet();
+    const kaart = L.map(div, { scrollWheelZoom: false, attributionControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap-bijdragers" }).addTo(kaart);
+    const pts = (rt.pts || []).filter((p) => Array.isArray(p) && p[0] != null).map((p) => [p[0], p[1]]);
+    const hs = rt.haltes.filter((h) => h[1] != null && h[2] != null);
+    const lijn = pts.length > 1 ? pts : hs.map((h) => [h[1], h[2]]);
+    const pl = L.polyline(lijn, { color: "#7c3aed", weight: 5, opacity: 0.85 }).addTo(kaart);
+    hs.forEach((h, i) => L.circleMarker([h[1], h[2]], { radius: i === 0 || i === hs.length - 1 ? 7 : 5, color: "#fff", weight: 2, fillColor: i === 0 ? "#16a34a" : i === hs.length - 1 ? "#dc2626" : "#7c3aed", fillOpacity: 1 })
+      .bindTooltip(esc(h[0])).addTo(kaart));
+    kaart.fitBounds(pl.getBounds(), { padding: [20, 20] });
+  } catch { div.remove(); }
+}
 
 $("net").onchange = () => { opslaan("net", $("net").value); toon(); };
 $("dag").onchange = toon;
