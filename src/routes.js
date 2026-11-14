@@ -241,6 +241,14 @@ async function apiRoute(req, env, c) {
   if (req.method !== "POST") return json({ fout: "methode" }, 405);
   const b = await req.json().catch(() => ({}));
   const actie = b.actie || "lijst";
+  // Live bericht lezen: de boordcomputer vraagt dit om de 30 s op (zonder login, zoals laad). Per
+  // Worker-instantie 15 s onthouden, zodat veel bussen samen weinig KV-leesacties kosten.
+  if (actie === "bericht-lees") {
+    const id = netId(b.id), nu = Date.now();
+    let m = _berichtCache.get(id);
+    if (!m || nu - m.t > 15000) { m = { t: nu, b: await c.st.getJSONveilig(`routebericht/${id}`, null) }; _berichtCache.set(id, m); }
+    return json({ bericht: m.b && m.b.tekst ? m.b : null });
+  }
   if (actie === "lijst" || actie === "laad" || actie === "haltes") {
     // Een route laden kan zonder login (de rechtstreekse link voor de chauffeur); de lijst niet.
     if (actie !== "laad" && !(await heeftRecht(req, env, c, "kijken", b.beheer))) return json({ fout: "Log in om de routes te zien." }, 403);
@@ -274,6 +282,7 @@ async function apiRoute(req, env, c) {
     }
     const routes = (await Promise.all(blobs.map(({ key }) => c.st.getJSONveilig(key, null)))).filter(Boolean);
     routes.sort((a, z) => String(a.naam).localeCompare(String(z.naam), "nl"));
+    if (b.metBerichten) await Promise.all(routes.map(async (r) => { const ber = await c.st.getJSONveilig(`routebericht/${r.id}`, null); if (ber && ber.tekst) r.bericht = ber; }));
     return json({ routes });
   }
   if (!(await heeftRecht(req, env, c, "bouwer", b.beheer))) return json({ fout: "Log in met een account met het recht Bouwer om routes op te slaan." }, 401);
@@ -309,6 +318,17 @@ async function apiRoute(req, env, c) {
     await c.st.setJSON(`routemeta/${id}`, meta);
     return json({ ok: true, route: meta });
   }
+  // Live bericht naar alle boordcomputers op deze route (leeg = wissen).
+  if (actie === "bericht") {
+    const id = netId(b.id);
+    if (!(await c.st.getJSONveilig(`routemeta/${id}`, null))) return json({ fout: "Route niet gevonden." }, 404);
+    const tekst = String(b.tekst || "").trim().slice(0, 500);
+    if (!tekst) { await c.st.delete(`routebericht/${id}`).catch(() => {}); _berichtCache.delete(id); return json({ ok: true, bericht: null }); }
+    const ber = { tekst, t: Date.now() };
+    await c.st.setJSON(`routebericht/${id}`, ber);
+    _berichtCache.delete(id);
+    return json({ ok: true, bericht: ber });
+  }
   // Enkel de infobanner (tekst voor de chauffeur) van een bestaande route aanpassen.
   if (actie === "info") {
     const id = netId(b.id);
@@ -322,7 +342,7 @@ async function apiRoute(req, env, c) {
   }
   if (actie === "verwijder") {
     const id = netId(b.id);
-    await Promise.all([`route/${id}`, `routeterug/${id}`, `routemeta/${id}`].map((k) => c.st.delete(k).catch(() => {})));
+    await Promise.all([`route/${id}`, `routeterug/${id}`, `routemeta/${id}`, `routebericht/${id}`].map((k) => c.st.delete(k).catch(() => {})));
     return json({ ok: true });
   }
   return json({ fout: "onbekende actie" }, 400);
@@ -377,7 +397,7 @@ async function apiEigenpos(req, env, c) {
   }
   return json({ naam: net.naam, buses: p.buses }, 200, { "cache-control": "max-age=5" });
 }
-const _posNet = new Map(), _posLees = new Map();
+const _posNet = new Map(), _posLees = new Map(), _berichtCache = new Map();
 
 // De boordcomputer meldt welke omloop gestart wordt; hier hoeft dat niet bijgehouden te worden.
 const apiStil = async () => json({ ok: true });

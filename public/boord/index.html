@@ -502,7 +502,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 
 <!-- Opstartscherm: logo + disclaimer/privacy/bronvermelding (wegklikken om te starten) -->
 <!-- Infobanner van een opgeslagen route: één keer bij het openen, wegklikken met OK -->
-<div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3>ℹ️ Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
+<div id="infoov" role="dialog" aria-label="Info"><div class="blok"><h3 id="infoovKop">ℹ️ Info</h3><div class="t" id="infoovtxt"></div><button id="infoovOk">OK</button></div></div>
 <div id="intro">
   <div class="merk">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -1210,7 +1210,32 @@ function toonInfoEenmalig() {
   const t = (OMLOOP && OMLOOP.vrij && OMLOOP.info) || "";
   if (!t || _infoGetoond) return;
   _infoGetoond = true;
-  $("infoovtxt").textContent = t; $("infoov").classList.add("aan");
+  $("infoovKop").textContent = "ℹ️ Info"; $("infoovtxt").textContent = t; $("infoov").classList.add("aan");
+}
+// Live bericht: de beheerder stuurt op /extra een bericht naar een route; elke boordcomputer op die
+// route kijkt om de 30 s (enkel als het scherm aan staat) en toont een nieuw bericht één keer, met piep.
+let _liveTimer = null, _liveLaatste = null;
+function startLiveBericht() {
+  clearInterval(_liveTimer); _liveTimer = null; _liveLaatste = null;
+  const id = OMLOOP && OMLOOP.vrij && OMLOOP.routeId; if (!id) return;
+  const gezienKey = "liveGezien:" + id;
+  const kijk = async () => {
+    if (document.hidden || !OMLOOP || OMLOOP.routeId !== id) return;
+    try {
+      const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "bericht-lees", id }) });
+      const d = await r.json(); const b = d && d.bericht;
+      _liveLaatste = b && b.tekst ? b : null;
+      if (!_liveLaatste) return;
+      let gezien = 0; try { gezien = +localStorage.getItem(gezienKey) || 0; } catch {}
+      if (b.t <= gezien) return;
+      try { localStorage.setItem(gezienKey, String(b.t)); } catch {}
+      $("infoovKop").textContent = "📢 Bericht"; $("infoovtxt").textContent = b.tekst; $("infoov").classList.add("aan");
+      try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
+      try { const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(ac.destination); g.gain.value = 0.2; o.start(); o.stop(ac.currentTime + 0.35); } catch {}
+    } catch {}
+  };
+  kijk(); _liveTimer = setInterval(kijk, 30000);
 }
 $("infoovOk").onclick = () => $("infoov").classList.remove("aan");
 async function gaNaarRit(i, viaPauze) {
@@ -2091,9 +2116,9 @@ async function toonOmleiding() {
   // Route zonder dienstregeling: geen omleidingen van De Lijn, wel de infobanner van de route.
   if (OMLOOP && OMLOOP.vrij) {
     $("omlTitel").textContent = "ℹ️ Info bij deze route";
-    $("omlInhoud").innerHTML = OMLOOP.info
-      ? `<div style="background:#fff4c2;color:#3d2e00;border-radius:10px;padding:14px;font-size:18px;line-height:1.4;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere">${esc(OMLOOP.info)}</div>`
-      : `<p class="hint">Geen extra info voor deze route.</p>`;
+    const vak = (t) => `<div style="background:#fff4c2;color:#3d2e00;border-radius:10px;padding:14px;font-size:18px;line-height:1.4;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:10px">${esc(t)}</div>`;
+    const live = _liveLaatste && OMLOOP.routeId ? `<h4 style="margin:0 0 6px">📢 Laatste bericht · ${new Date(_liveLaatste.t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })}</h4>` + vak(_liveLaatste.tekst) : "";
+    $("omlInhoud").innerHTML = (live + (OMLOOP.info ? vak(OMLOOP.info) : "")) || `<p class="hint">Geen extra info voor deze route.</p>`;
     return;
   }
   const row = OMLOOP && OMLOOP.ritten[RITI];
@@ -2375,13 +2400,14 @@ async function startVrijeRit(route) {
   }
   OMLOOP = {
     afk: "vrij", key: route.naam, dag: vandaagYmd(), eigen: true, vrij: true, pendel: !!route.pendel, naam: route.naam,
-    geenHaltes: !!route.geenHaltes, routes, busnr: "", busType: "", ritten, info: String(route.info || "").trim(),
+    geenHaltes: !!route.geenHaltes, routes, busnr: "", busType: "", ritten, info: String(route.info || "").trim(), routeId: route.id || "",
   };
   try { localStorage.setItem("vrijeRoute", JSON.stringify(route)); } catch {}
   // Zoals bij een omloop: het opstartscherm (info & disclaimer) één keer per sessie.
   let eerste = true; try { eerste = sessionStorage.getItem("bp-intro") !== "1"; } catch {}
   if (eerste) toonIntro();
   toonInfoEenmalig();
+  startLiveBericht();
   // Pendel: zoals bij een omloop eerst kiezen met welke rit (heen of terug) je begint.
   if (route.pendel) { toonOverzicht(); return; }
   await gaNaarRit(0, false);
@@ -2435,7 +2461,8 @@ async function vrijStartOpgeslagen(id) {
   const r = await fetch("/api/route", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actie: "laad", id }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.route) throw new Error(d.fout || "Kon deze route niet laden.");
-  startVrijeRit(vrijUitOpgeslagen(d.route));
+  const route = vrijUitOpgeslagen(d.route); route.id = d.route.id || id;
+  startVrijeRit(route);
 }
 $("vrijLijst").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-route]"); if (!b) return;

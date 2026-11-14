@@ -16,6 +16,7 @@ label { display:block; font-size:13px; color:var(--muted); margin:12px 0 3px }
 input[type=text] { width:100%; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit }
 input[type=file] { width:100%; font:inherit }
 textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; resize:vertical }
+.rij .info.live { background:#dbeafe; color:#1e3a8a }
 .rij .info { display:block; margin-top:3px; padding:4px 7px; border-radius:5px; background:#fff4c2; color:#3d2e00; font-size:13px; white-space:pre-wrap }
 select { width:100%; padding:9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; margin-top:6px }
 .of { font-size:12px; color:var(--muted); margin:6px 0 0 }
@@ -151,11 +152,12 @@ $("bewaar").onclick = async () => {
 };
 async function laad() {
   try {
-    const { routes } = await api({ actie: "lijst" });
+    const { routes } = await api({ actie: "lijst", metBerichten: true });
     ROUTES = routes; vulKeuzes();
     $("lijst").className = routes.length ? "" : "muted";
     $("lijst").innerHTML = routes.length ? routes.map((r) =>
-      `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${r.pendel ? `Pendel · heen ${String(r.km || 0).replace(".", ",")} km, terug ${String(r.kmTerug || 0).replace(".", ",")} km` : `${String(r.km || 0).replace(".", ",")} km`}${r.haltes ? ` · ${r.haltes} haltes` : ""}</small>${r.info ? `<span class="info">ℹ️ ${esc(r.info)}</span>` : ""}</div>` +
+      `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${r.pendel ? `Pendel · heen ${String(r.km || 0).replace(".", ",")} km, terug ${String(r.kmTerug || 0).replace(".", ",")} km` : `${String(r.km || 0).replace(".", ",")} km`}${r.haltes ? ` · ${r.haltes} haltes` : ""}</small>${r.info ? `<span class="info">ℹ️ ${esc(r.info)}</span>` : ""}${r.bericht ? `<span class="info live">📢 ${new Date(r.bericht.t).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })} · ${esc(r.bericht.tekst)}</span>` : ""}</div>` +
+      `<button class="link" data-live="${esc(r.id)}" title="Bericht dat meteen verschijnt bij de chauffeurs die deze route nu rijden">📢 Live bericht</button>` +
       `<button class="link" data-info="${esc(r.id)}" title="Tekst die de chauffeur één keer ziet bij het openen van de route">Infobanner</button>` +
       `<button class="link" data-link="${esc(r.id)}" title="Link die deze route meteen in de boordcomputer opent">Link kopiëren</button>` +
       `<button data-id="${esc(r.id)}" data-naam="${esc(r.naam)}">Verwijderen</button></div>`).join("")
@@ -169,6 +171,28 @@ $("lijst").onclick = async (ev) => {
     try { await navigator.clipboard.writeText(url); l.textContent = "✓ Gekopieerd"; }
     catch { prompt("Kopieer deze link:", url); }
     setTimeout(() => { l.textContent = "Link kopiëren"; }, 2500);
+    return;
+  }
+  const lb = ev.target.closest("button[data-live]");
+  if (lb) {
+    const rij = lb.closest(".rij"), r = ROUTES.find((x) => x.id === lb.dataset.live) || {};
+    const al = rij.nextElementSibling && rij.nextElementSibling.classList.contains("infobewerk") ? rij.nextElementSibling : null;
+    if (al) al.remove();
+    const box = document.createElement("div"); box.className = "infobewerk";
+    box.innerHTML = `<label style="margin-top:0">Live bericht naar de chauffeurs op "${esc(r.naam || "")}"</label>` +
+      `<textarea rows="3" maxlength="500" placeholder="bv. Rij na deze rit naar de stelplaats."></textarea>` +
+      `<p class="muted" style="margin:4px 0 0;font-size:13px">Verschijnt binnen ongeveer een minuut als venster in de boordcomputer, met een piep.</p>` +
+      `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button type="button" class="ok">Versturen</button>` +
+      (r.bericht ? `<button type="button" class="annuleer wis">Bericht wissen</button>` : "") +
+      `<button type="button" class="annuleer sluit">Annuleren</button></div>`;
+    rij.after(box); const ta = box.querySelector("textarea"); ta.focus();
+    box.querySelector(".sluit").onclick = () => box.remove();
+    const stuur = async (tekst) => {
+      try { await api({ actie: "bericht", id: r.id, tekst }); meld(tekst ? "✓ Bericht verstuurd." : "✓ Bericht gewist.", true); laad(); }
+      catch (e) { meld(naarLogin(e)); }
+    };
+    box.querySelector(".ok").onclick = () => { const t = ta.value.trim(); if (!t) { ta.focus(); return; } stuur(t); };
+    const w = box.querySelector(".wis"); if (w) w.onclick = () => stuur("");
     return;
   }
   const ib = ev.target.closest("button[data-info]");
