@@ -26,6 +26,9 @@ button { font:600 15px system-ui; padding:11px; border-radius:6px; border:0; bac
 .rij .n { flex:1; min-width:0 } .rij small { color:var(--muted) }
 .rij button { background:transparent; color:var(--bad); border:1px solid var(--line); padding:6px 10px; font-size:13px }
 .rij button.link { color:var(--accent) }
+.infobewerk { padding:10px 0 12px; border-bottom:1px solid var(--line) }
+.infobewerk button { padding:8px 16px; font-size:14px }
+.infobewerk button.annuleer { background:transparent; color:var(--fg); border:1px solid var(--line) }
 a { color:var(--accent) }
 </style>
 </head>
@@ -170,11 +173,21 @@ $("lijst").onclick = async (ev) => {
   }
   const ib = ev.target.closest("button[data-info]");
   if (ib) {
-    const r = ROUTES.find((x) => x.id === ib.dataset.info) || {};
-    const t = prompt(`Infobanner voor "${r.naam || ""}" (leeg = geen banner):`, r.info || "");
-    if (t === null) return;
-    try { await api({ actie: "info", id: ib.dataset.info, info: t }); meld(t.trim() ? "✓ Infobanner opgeslagen." : "✓ Infobanner verwijderd.", true); laad(); }
-    catch (e) { meld(naarLogin(e)); }
+    // Bewerken in de lijst zelf: Enter = nieuwe regel, opslaan enkel met de knop OK.
+    const rij = ib.closest(".rij"), r = ROUTES.find((x) => x.id === ib.dataset.info) || {};
+    if (rij.nextElementSibling && rij.nextElementSibling.classList.contains("infobewerk")) { rij.nextElementSibling.querySelector("textarea").focus(); return; }
+    const box = document.createElement("div"); box.className = "infobewerk";
+    box.innerHTML = `<label style="margin-top:0">Infobanner voor "${esc(r.naam || "")}" (leeg = geen banner)</label>` +
+      `<textarea rows="3" maxlength="500"></textarea>` +
+      `<div style="display:flex;gap:8px;margin-top:6px"><button type="button" class="ok">OK</button><button type="button" class="annuleer">Annuleren</button></div>`;
+    const ta = box.querySelector("textarea"); ta.value = r.info || "";
+    rij.after(box); ta.focus();
+    box.querySelector(".annuleer").onclick = () => box.remove();
+    box.querySelector(".ok").onclick = async () => {
+      const t = ta.value.trim();
+      try { await api({ actie: "info", id: r.id, info: t }); meld(t ? "✓ Infobanner opgeslagen." : "✓ Infobanner verwijderd.", true); laad(); }
+      catch (e) { meld(naarLogin(e)); }
+    };
     return;
   }
   const b = ev.target.closest("button[data-id]"); if (!b) return;
