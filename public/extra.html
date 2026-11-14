@@ -15,6 +15,8 @@ h1 { font-size:20px; margin:0 0 4px } h2 { font-size:16px; margin:0 0 8px } .mut
 label { display:block; font-size:13px; color:var(--muted); margin:12px 0 3px }
 input[type=text] { width:100%; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit }
 input[type=file] { width:100%; font:inherit }
+select { width:100%; padding:9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; margin-top:6px }
+.of { font-size:12px; color:var(--muted); margin:6px 0 0 }
 button { font:600 15px system-ui; padding:11px; border-radius:6px; border:0; background:var(--good); color:#fff; cursor:pointer }
 #bewaar { width:100%; margin-top:16px }
 .fout { color:var(--bad); font-size:14px; margin-top:8px } .ok { color:var(--good); font-size:14px; margin-top:8px }
@@ -36,9 +38,13 @@ a { color:var(--accent) }
   </div>
   <label for="bestand" id="lblHeen">GPX-bestand (bv. uit BRouter-web, export "GPX Track")</label>
   <input type="file" id="bestand" accept=".gpx,application/gpx+xml">
+  <p class="of">of kies een opgeslagen route:</p>
+  <select id="kiesHeen" class="kies"><option value="">—</option></select>
   <div id="terugblok" hidden>
     <label for="bestandTerug">Terugrit: GPX-bestand</label>
     <input type="file" id="bestandTerug" accept=".gpx,application/gpx+xml">
+    <p class="of">of kies een opgeslagen route:</p>
+    <select id="kiesTerug" class="kies"><option value="">—</option></select>
   </div>
   <label for="naam">Naam</label>
   <input type="text" id="naam" placeholder="Omleiding Gent Zuid - Gent Sint-Pieters" maxlength="120">
@@ -78,8 +84,34 @@ function gpxInfo(tekst) {
 }
 $("bestand").onchange = () => {
   const f = $("bestand").files[0];
+  if (f) $("kiesHeen").value = "";
   if (f && !$("naam").value.trim()) $("naam").value = f.name.replace(/\.gpx$/i, "").replace(/[_]+/g, " ");
 };
+$("bestandTerug").onchange = () => { if ($("bestandTerug").files[0]) $("kiesTerug").value = ""; };
+$("kiesHeen").onchange = () => {
+  if (!$("kiesHeen").value) return;
+  $("bestand").value = "";
+  const o = $("kiesHeen").selectedOptions[0];
+  if (!$("naam").value.trim()) $("naam").value = o.dataset.naam || "";
+};
+$("kiesTerug").onchange = () => { if ($("kiesTerug").value) $("bestandTerug").value = ""; };
+// Opgeslagen routes als bron: "id" = (heen)rit, "id|terug" = terugrit van een pendel.
+let ROUTES = [];
+function vulKeuzes() {
+  const opties = ['<option value="">—</option>'];
+  for (const r of ROUTES) {
+    if (r.pendel) {
+      opties.push(`<option value="${esc(r.id)}" data-naam="${esc(r.naam)}">${esc(r.naam)} · heenrit</option>`);
+      opties.push(`<option value="${esc(r.id)}|terug" data-naam="${esc(r.naam)}">${esc(r.naam)} · terugrit</option>`);
+    } else opties.push(`<option value="${esc(r.id)}" data-naam="${esc(r.naam)}">${esc(r.naam)}</option>`);
+  }
+  for (const id of ["kiesHeen", "kiesTerug"]) { const v = $(id).value; $(id).innerHTML = opties.join(""); $(id).value = v; }
+}
+async function gpxUitKeuze(waarde) {
+  const [id, deel] = waarde.split("|");
+  const { route } = await api({ actie: "laad", id });
+  return deel === "terug" ? route.gpxTerug : route.gpx;
+}
 const isPendel = () => document.querySelector('input[name="soort"]:checked').value === "pendel";
 document.querySelectorAll('input[name="soort"]').forEach((r) => r.onchange = () => {
   $("terugblok").hidden = !isPendel();
@@ -87,18 +119,25 @@ document.querySelectorAll('input[name="soort"]').forEach((r) => r.onchange = () 
 });
 $("bewaar").onclick = async () => {
   const f = $("bestand").files[0], ft = $("bestandTerug").files[0], naam = $("naam").value.trim(), pendel = isPendel();
-  if (!f) return meld(pendel ? "Kies het GPX-bestand van de heenrit." : "Kies eerst een GPX-bestand.");
-  if (pendel && !ft) return meld("Kies ook het GPX-bestand van de terugrit.");
+  const kh = $("kiesHeen").value, kt = $("kiesTerug").value;
+  if (!f && !kh) return meld(pendel ? "Kies het GPX-bestand of een opgeslagen route voor de heenrit." : "Kies eerst een GPX-bestand of een opgeslagen route.");
+  if (pendel && !ft && !kt) return meld("Kies ook een GPX-bestand of opgeslagen route voor de terugrit.");
   if (!naam) return meld("Geef de route een naam.");
-  const gpx = await f.text(), info = gpxInfo(gpx);
-  if (!info) return meld("In dit bestand staat geen route. Exporteer in BRouter-web als GPX Track.");
-  const gpxTerug = pendel ? await ft.text() : "", infoT = pendel ? gpxInfo(gpxTerug) : null;
+  let gpx, gpxTerug = "";
+  try {
+    gpx = f ? await f.text() : await gpxUitKeuze(kh);
+    if (pendel) gpxTerug = ft ? await ft.text() : await gpxUitKeuze(kt);
+  } catch (e) { return meld(naarLogin(e)); }
+  const info = gpx ? gpxInfo(gpx) : null;
+  if (!info) return meld("In de heenrit staat geen route. Exporteer in BRouter-web als GPX Track.");
+  const infoT = pendel ? gpxInfo(gpxTerug || "") : null;
   if (pendel && !infoT) return meld("In het bestand van de terugrit staat geen route.");
   $("bewaar").disabled = true;
   try {
     await api({ actie: "bewaar", naam, gpx, km: info.km, haltes: info.haltes, pendel, gpxTerug, kmTerug: infoT ? infoT.km : 0 });
     meld(`✓ "${esc(naam)}" staat in de boordcomputer.`, true);
     $("bestand").value = ""; $("bestandTerug").value = ""; $("naam").value = "";
+    $("kiesHeen").value = ""; $("kiesTerug").value = "";
     laad();
   } catch (e) { meld(naarLogin(e)); }
   finally { $("bewaar").disabled = false; }
@@ -106,6 +145,7 @@ $("bewaar").onclick = async () => {
 async function laad() {
   try {
     const { routes } = await api({ actie: "lijst" });
+    ROUTES = routes; vulKeuzes();
     $("lijst").className = routes.length ? "" : "muted";
     $("lijst").innerHTML = routes.length ? routes.map((r) =>
       `<div class="rij"><div class="n"><b>${esc(r.naam)}</b><br><small>${r.pendel ? `Pendel · heen ${String(r.km || 0).replace(".", ",")} km, terug ${String(r.kmTerug || 0).replace(".", ",")} km` : `${String(r.km || 0).replace(".", ",")} km`}${r.haltes ? ` · ${r.haltes} haltes` : ""}</small></div>` +
