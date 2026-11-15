@@ -2249,7 +2249,7 @@ function volgVerplaats(centrum, z, tnu) {
   const zc = kaart.getZoom() !== z;
   if (!_volgBezig) { kaart._stop && kaart._stop(); kaart._moveStart(zc, false); _volgBezig = true; }
   if (zc) _volgZoomVeranderd = true;
-  kaart._move(centrum, z);
+  kaart._move(centrum, z, { pinch: true, round: false }); // pinch: ook zonder zoomwissel een "zoom"-event, zodat tegels, lijnen en bolletjes mee verschuiven
   if (tnu - _volgLaatsteEinde > 250) volgAfsluiten(tnu);
 }
 function volgAfsluiten(tnu) {
