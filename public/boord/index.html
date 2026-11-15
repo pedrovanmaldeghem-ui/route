@@ -2115,7 +2115,7 @@ function maakKaart() {
   kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0, zoomSnap: 0, zoomDelta: 1 }).setView(c0, 15);
   // Zoomt de chauffeur zelf (+/− of knijpen), dan onthouden we dat als verschuiving t.o.v. de automatische
   // zoom: wie liever wat verder uitgezoomd rijdt, blijft dat ook bij het snelheidsgestuurd zoomen.
-  kaart.on("zoomend", () => { if (!_eigenZoom && _zoomAuto != null) _zoomExtra = Math.max(-3, Math.min(3, kaart.getZoom() - _zoomAuto)); });
+  kaart.on("zoomend", () => { if (performance.now() > _eigenZoomTot && _zoomAuto != null) _zoomExtra = Math.max(-3, Math.min(3, kaart.getZoom() - _zoomAuto)); });
   _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
   if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
@@ -2191,7 +2191,7 @@ let _volgSeg = null, _volgLaatsteFix = 0, _volgFrameT = 0;
 const ZOOM_TABEL = [[0, 17], [25, 17], [50, 16.4], [70, 15.9], [90, 15.4], [120, 15]];
 let _zoomModus = "auto";
 try { _zoomModus = localStorage.getItem("lk-boord-zoom") || "auto"; } catch {}
-let _zoomAuto = null, _zoomExtra = 0, _zoomSnel = null, _zoomBeweegt = false, _eigenZoom = false;
+let _zoomAuto = null, _zoomExtra = 0, _zoomSnel = null, _zoomBeweegt = false;
 function zoomVoorSnelheid(v) {
   for (let i = 1; i < ZOOM_TABEL.length; i++) if (v <= ZOOM_TABEL[i][0]) {
     const [v0, z0] = ZOOM_TABEL[i - 1], [v1, z1] = ZOOM_TABEL[i]; return z0 + (z1 - z0) * (v - v0) / (v1 - v0); }
@@ -2242,27 +2242,27 @@ function nieuwVolgDoel(lat, lon, hoek, s) {
   if (meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 250) { _volgNu.lat = lat; _volgNu.lon = lon; _volgNu.s = s; _volgSeg = null; return; }
   _volgSeg = volgSegment(lat, lon, s, nu, dur);
 }
-let _volgBezig = false, _volgZoomVeranderd = false, _volgLaatsteEinde = 0;
-function volgVerplaats(centrum, z, tnu) {
-  if (!kaart._move || !kaart._moveStart || !kaart._moveEnd) { kaart.setView(centrum, z, { animate: false }); return; }
-  z = kaart._limitZoom ? kaart._limitZoom(z) : z;
-  const zc = kaart.getZoom() !== z;
-  if (!_volgBezig) { kaart._stop && kaart._stop(); kaart._moveStart(zc, false); _volgBezig = true; }
-  if (zc) _volgZoomVeranderd = true;
-  kaart._move(centrum, z, { pinch: true, round: false }); // pinch: ook zonder zoomwissel een "zoom"-event, zodat tegels, lijnen en bolletjes mee verschuiven
-  if (tnu - _volgLaatsteEinde > 250) volgAfsluiten(tnu);
-}
-function volgAfsluiten(tnu) {
-  if (!_volgBezig || !kaart) return;
-  _volgBezig = false; _volgLaatsteEinde = tnu || performance.now();
-  kaart._moveEnd(_volgZoomVeranderd); _volgZoomVeranderd = false;
+// Kaart verplaatsen: gewoon meeschuiven op de huidige zoom (zoals vóór het meezoomen; setView op dezelfde
+// zoom schuift de kaart enkel op, zonder herladen). Moet de zoom veranderen, dan doen we dat in kleine
+// stapjes met Leaflet's eigen zoom-animatie (±0,25 s) en schuiven we tijdens die animatie niet.
+let _eigenZoomTot = 0;
+function volgVerplaats(centrum, zDoel, bol) {
+  if (kaart._animatingZoom) return;
+  const zNu = kaart.getZoom();
+  if (_zoomModus === "auto" && Math.abs(zDoel - zNu) >= 0.15) {
+    _eigenZoomTot = performance.now() + 1000; // de zoomend hierna is van ons, niet van de chauffeur
+    // Zoomen rond de bol: die blijft op zijn plek op het scherm, enkel de kaart rondom zoomt.
+    kaart.setZoomAround(L.latLng(bol), Math.round(zDoel * 20) / 20, { animate: true });
+    return;
+  }
+  kaart.setView(centrum, zNu, { animate: false });
 }
 function startVolgAnim() {
   if (_volgAnim != null) return;
   _volgFrameT = performance.now();
   const stap = (tnu) => {
     _volgAnim = null;
-    if (!kaart || !volgModus || !_volgDoel || !_volgNu) { if (kaart) volgAfsluiten(); return; }
+    if (!kaart || !volgModus || !_volgDoel || !_volgNu) return;
     tnu = tnu || performance.now();
     const dt = Math.min(100, Math.max(0, tnu - _volgFrameT)); _volgFrameT = tnu;
     let rijdt = false;
@@ -2286,18 +2286,13 @@ function startVolgAnim() {
     const ah = 1 - Math.exp(-dt / 350); // draaien: ±350 ms tijdconstante
     _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, ah);
     const z = volgZoom(dt);
-    const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, z);
+    const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, kaart.getZoom());
     const vooruit = mpp * kaart.getSize().y * 0.3; // meter vooruit = ~30% van de schermhoogte (bus onderaan)
     if (marker) marker.setLatLng([_volgNu.lat, _volgNu.lon]);
-    // Bewust niet kaart.setView(..., {animate:false}): dat doet elke frame een volledige 'reset' van de
-    // kaart, waarbij alle kaarttegels weggegooid en opnieuw aangemaakt worden (zwaar, en bij het zoomen
-    // even een lege kaart). Zoals Leaflet's eigen flyTo schuiven we de kaart per frame (_move) en sluiten
-    // we de beweging om de 250 ms af (_moveEnd), zodat nieuwe tegels geladen worden.
-    _eigenZoom = true;
-    try { volgVerplaats(L.latLng(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit)), z, tnu); } finally { _eigenZoom = false; }
+    volgVerplaats(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit), z, [_volgNu.lat, _volgNu.lon]);
     if (kaart.setBearing) { try { kaart.setBearing(-_volgNu.hoek); } catch {} }
     const dh = Math.abs(((_volgDoel.hoek - _volgNu.hoek + 540) % 360) - 180);
-    if (!rijdt && dh < 0.3 && !_zoomBeweegt) { volgAfsluiten(); _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
+    if (!rijdt && dh < 0.3 && !_zoomBeweegt && !kaart._animatingZoom) { _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
     _volgAnim = requestAnimationFrame(stap);
   };
   _volgAnim = requestAnimationFrame(stap);
