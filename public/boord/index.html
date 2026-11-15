@@ -2101,27 +2101,50 @@ function mapKnop(positie, html, titel, onklik) {
 }
 // Hoekinterpolatie langs de kortste weg (−180..180), zodat de kaart nooit "de lange kant om" draait.
 function _hoekNaar(van, naar, t) { const d = ((naar - van + 540) % 360) - 180; return van + d * t; }
-// Vloeiende volgmodus: schuift en draait de kaart elke frame een stukje naar het doel (echte positie +
-// rijrichting) i.p.v. in één sprong per GPS-prik (±1×/sec). Dat haalt het schokkerige, stapsgewijze weg
-// en laat de kaart vloeiend met de weg meedraaien. Stopt vanzelf zodra het doel bereikt is.
+// Vloeiende volgmodus. De GPS geeft ±1 positie per seconde. Vroeger schoof de kaart na elke prik snel
+// naar de nieuwe plek en stond dan stil tot de volgende prik: stop-en-go, de kaart "haperde".
+// Nu rijdt de bol met constante snelheid van de getoonde plek naar de nieuwe GPS-plek, gespreid over
+// de tijd tussen twee prikken (dus continu, ±1 s achter de echte positie). Komt de volgende prik wat
+// laat, dan rijdt hij nog even door in dezelfde richting (max. 40 % extra) i.p.v. stil te vallen.
+// De draaiing volgt tijdsgebaseerd en zacht, onafhankelijk van de framerate.
+let _volgSeg = null, _volgLaatsteFix = 0, _volgFrameT = 0;
+function nieuwVolgDoel(lat, lon, hoek) {
+  const nu = performance.now();
+  const veranderd = !_volgDoel || meter([_volgDoel.lat, _volgDoel.lon], [lat, lon]) > 0.5;
+  _volgDoel = { lat, lon, hoek };
+  if (!_volgNu) { _volgNu = { lat, lon, hoek }; _volgSeg = null; _volgLaatsteFix = nu; return; }
+  if (!veranderd) return;
+  const dur = Math.max(400, Math.min(2000, _volgLaatsteFix ? nu - _volgLaatsteFix : 1000));
+  _volgLaatsteFix = nu;
+  // Grote sprong (GPS-sprong, ritwissel, eerste fix na lang wachten): niet over de kaart laten glijden.
+  if (meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 250) { _volgNu.lat = lat; _volgNu.lon = lon; _volgSeg = null; return; }
+  _volgSeg = { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1: lat, lon1: lon, t0: nu, dur };
+}
 function startVolgAnim() {
   if (_volgAnim != null) return;
-  const stap = () => {
+  _volgFrameT = performance.now();
+  const stap = (tnu) => {
     _volgAnim = null;
     if (!kaart || !volgModus || !_volgDoel || !_volgNu) return;
-    const a = 0.18; // easing per frame: zacht maar volgt vlot
-    _volgNu.lat += (_volgDoel.lat - _volgNu.lat) * a;
-    _volgNu.lon += (_volgDoel.lon - _volgNu.lon) * a;
-    _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, a);
+    tnu = tnu || performance.now();
+    const dt = Math.min(100, Math.max(0, tnu - _volgFrameT)); _volgFrameT = tnu;
+    let rijdt = false;
+    if (_volgSeg) {
+      const f = Math.min(1.4, (tnu - _volgSeg.t0) / _volgSeg.dur);
+      _volgNu.lat = _volgSeg.lat0 + (_volgSeg.lat1 - _volgSeg.lat0) * f;
+      _volgNu.lon = _volgSeg.lon0 + (_volgSeg.lon1 - _volgSeg.lon0) * f;
+      if (f >= 1.4) _volgSeg = null; else rijdt = true;
+    }
+    const ah = 1 - Math.exp(-dt / 350); // draaien: ±350 ms tijdconstante
+    _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, ah);
     const z = kaart.getZoom();
     const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, z);
     const vooruit = mpp * kaart.getSize().y * 0.3; // meter vooruit = ~30% van de schermhoogte (bus onderaan)
     if (marker) marker.setLatLng([_volgNu.lat, _volgNu.lon]);
     kaart.setView(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit), z, { animate: false });
     if (kaart.setBearing) { try { kaart.setBearing(-_volgNu.hoek); } catch {} }
-    const dpos = Math.abs(_volgDoel.lat - _volgNu.lat) + Math.abs(_volgDoel.lon - _volgNu.lon);
     const dh = Math.abs(((_volgDoel.hoek - _volgNu.hoek + 540) % 360) - 180);
-    if (dpos < 2e-6 && dh < 0.4) { _volgNu.lat = _volgDoel.lat; _volgNu.lon = _volgDoel.lon; _volgNu.hoek = _volgDoel.hoek; return; } // bereikt: stoppen
+    if (!rijdt && dh < 0.3) { _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
     _volgAnim = requestAnimationFrame(stap);
   };
   _volgAnim = requestAnimationFrame(stap);
@@ -2171,8 +2194,7 @@ function zetMarker() {
     if (el) { const w = el.querySelector(".bm"); if (w) w.style.setProperty("--h", "0deg"); } // kaart draait, kegel recht omhoog
     // Doel voor de vloeiende volg-animatie: de echte positie + rijrichting. De animatielus schuift en
     // draait de kaart daar geleidelijk naartoe (zie startVolgAnim), i.p.v. in één sprong per GPS-prik.
-    _volgDoel = { lat, lon, hoek };
-    if (!_volgNu) _volgNu = { lat, lon, hoek };
+    nieuwVolgDoel(lat, lon, hoek);
     startVolgAnim();
   } else {
     // Vrije modus: de kaart draait niet automatisch mee, dus laat de kegel zelf de echte rijrichting wijzen.
