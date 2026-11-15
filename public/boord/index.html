@@ -581,6 +581,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
       <button class="knop" id="menuOverzicht"><i data-ic="wissel"></i>Rit wisselen</button>
       <button class="knop" id="menuThema"><i data-ic="instel"></i><span>Donkere modus</span></button>
       <label class="dimrij"><span>Kaart</span><select id="kaartStijl" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="osm">Gedetailleerd</option><option value="rustig">Rustig (gedempte kleuren)</option><option value="grijs">Eenvoudig (lichtgrijs)</option></select></label>
+      <label class="dimrij"><span>Zoom</span><select id="zoomKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="auto">Automatisch volgens snelheid</option><option value="vast">Vast (zelf zoomen)</option></select></label>
       <label class="dimrij"><span>Flitspalen</span><select id="flitsKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="aan">Tonen en waarschuwen</option><option value="kaart">Enkel op de kaart</option><option value="uit">Uit</option></select></label>
       <p class="fpbron">Vaste flitspalen en trajectcontroles: © OpenStreetMap-bijdragers. Mobiele controles staan er niet in.</p>
       <label class="dimrij" id="dimRij"><span>Helderheid</span><i title="donkerder">−</i><input type="range" id="dimBalk" min="-50" max="50" step="5" value="0"><i title="lichter">+</i><b id="dimWaarde">0</b></label>
@@ -2049,7 +2050,10 @@ function maakKaart() {
   if (kaart || !RIT || (!RIT.pts.length && !RIT.enkelDoel)) return;
   const c0 = RIT.enkelDoel ? RIT.doel : [RIT.pts[0][0], RIT.pts[0][1]];
   // touchRotate aan: in vrije modus mag de chauffeur de kaart zelf draaien (twee vingers).
-  kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0 }).setView(c0, 15);
+  kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0, zoomSnap: 0, zoomDelta: 1 }).setView(c0, 15);
+  // Zoomt de chauffeur zelf (+/− of knijpen), dan onthouden we dat als verschuiving t.o.v. de automatische
+  // zoom: wie liever wat verder uitgezoomd rijdt, blijft dat ook bij het snelheidsgestuurd zoomen.
+  kaart.on("zoomend", () => { if (!_eigenZoom && _zoomAuto != null) _zoomExtra = Math.max(-3, Math.min(3, kaart.getZoom() - _zoomAuto)); });
   _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
   if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
@@ -2119,6 +2123,33 @@ function _hoekNaar(van, naar, t) { const d = ((naar - van + 540) % 360) - 180; r
 // laat, dan rijdt hij nog even door in dezelfde richting (max. 15 % extra; sta je stil, dan glijdt hij terug) i.p.v. stil te vallen.
 // De draaiing volgt tijdsgebaseerd en zacht, onafhankelijk van de framerate.
 let _volgSeg = null, _volgLaatsteFix = 0, _volgFrameT = 0;
+// Zoomen op snelheid: traag rijden = dichtbij (straatniveau), snel = verder uitgezoomd zodat je meer
+// van de weg vooruit ziet. Rustig gehouden voor de chauffeur: de snelheid wordt over ±4 s uitgemiddeld,
+// de zoom past zich pas aan bij een duidelijk verschil (dode zone) en verloopt traag (±2,5 s).
+const ZOOM_TABEL = [[0, 17], [25, 17], [50, 16.4], [70, 15.9], [90, 15.4], [120, 15]];
+let _zoomModus = "auto";
+try { _zoomModus = localStorage.getItem("lk-boord-zoom") || "auto"; } catch {}
+let _zoomAuto = null, _zoomExtra = 0, _zoomSnel = null, _zoomBeweegt = false, _eigenZoom = false;
+function zoomVoorSnelheid(v) {
+  for (let i = 1; i < ZOOM_TABEL.length; i++) if (v <= ZOOM_TABEL[i][0]) {
+    const [v0, z0] = ZOOM_TABEL[i - 1], [v1, z1] = ZOOM_TABEL[i]; return z0 + (z1 - z0) * (v - v0) / (v1 - v0); }
+  return ZOOM_TABEL[ZOOM_TABEL.length - 1][1];
+}
+// Geeft de zoom voor dit frame (en of hij nog beweegt).
+function volgZoom(dt) {
+  if (_zoomModus !== "auto") { _zoomAuto = null; return kaart.getZoom(); }
+  const v = _snelheid != null ? _snelheid : 0;
+  _zoomSnel = _zoomSnel == null ? v : _zoomSnel + (v - _zoomSnel) * (1 - Math.exp(-dt / 4000));
+  const doel = zoomVoorSnelheid(_zoomSnel);
+  if (_zoomAuto == null) _zoomAuto = kaart.getZoom() - _zoomExtra;
+  const verschil = doel - _zoomAuto;
+  if (!_zoomBeweegt && Math.abs(verschil) > 0.25) _zoomBeweegt = true;   // dode zone: kleine schommelingen negeren
+  if (_zoomBeweegt) {
+    _zoomAuto += verschil * (1 - Math.exp(-dt / 2500));
+    if (Math.abs(doel - _zoomAuto) < 0.03) _zoomBeweegt = false;
+  }
+  return Math.max(12, Math.min(19, _zoomAuto + _zoomExtra));
+}
 function nieuwVolgDoel(lat, lon, hoek) {
   const nu = performance.now();
   const veranderd = !_volgDoel || meter([_volgDoel.lat, _volgDoel.lon], [lat, lon]) > 0.5;
@@ -2136,12 +2167,27 @@ function nieuwVolgDoel(lat, lon, hoek) {
   if (meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 250) { _volgNu.lat = lat; _volgNu.lon = lon; _volgSeg = null; return; }
   _volgSeg = { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1: lat, lon1: lon, t0: nu, dur };
 }
+let _volgBezig = false, _volgZoomVeranderd = false, _volgLaatsteEinde = 0;
+function volgVerplaats(centrum, z, tnu) {
+  if (!kaart._move || !kaart._moveStart || !kaart._moveEnd) { kaart.setView(centrum, z, { animate: false }); return; }
+  z = kaart._limitZoom ? kaart._limitZoom(z) : z;
+  const zc = kaart.getZoom() !== z;
+  if (!_volgBezig) { kaart._stop && kaart._stop(); kaart._moveStart(zc, false); _volgBezig = true; }
+  if (zc) _volgZoomVeranderd = true;
+  kaart._move(centrum, z);
+  if (tnu - _volgLaatsteEinde > 250) volgAfsluiten(tnu);
+}
+function volgAfsluiten(tnu) {
+  if (!_volgBezig || !kaart) return;
+  _volgBezig = false; _volgLaatsteEinde = tnu || performance.now();
+  kaart._moveEnd(_volgZoomVeranderd); _volgZoomVeranderd = false;
+}
 function startVolgAnim() {
   if (_volgAnim != null) return;
   _volgFrameT = performance.now();
   const stap = (tnu) => {
     _volgAnim = null;
-    if (!kaart || !volgModus || !_volgDoel || !_volgNu) return;
+    if (!kaart || !volgModus || !_volgDoel || !_volgNu) { if (kaart) volgAfsluiten(); return; }
     tnu = tnu || performance.now();
     const dt = Math.min(100, Math.max(0, tnu - _volgFrameT)); _volgFrameT = tnu;
     let rijdt = false;
@@ -2153,14 +2199,19 @@ function startVolgAnim() {
     }
     const ah = 1 - Math.exp(-dt / 350); // draaien: ±350 ms tijdconstante
     _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, ah);
-    const z = kaart.getZoom();
+    const z = volgZoom(dt);
     const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, z);
     const vooruit = mpp * kaart.getSize().y * 0.3; // meter vooruit = ~30% van de schermhoogte (bus onderaan)
     if (marker) marker.setLatLng([_volgNu.lat, _volgNu.lon]);
-    kaart.setView(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit), z, { animate: false });
+    // Bewust niet kaart.setView(..., {animate:false}): dat doet elke frame een volledige 'reset' van de
+    // kaart, waarbij alle kaarttegels weggegooid en opnieuw aangemaakt worden (zwaar, en bij het zoomen
+    // even een lege kaart). Zoals Leaflet's eigen flyTo schuiven we de kaart per frame (_move) en sluiten
+    // we de beweging om de 250 ms af (_moveEnd), zodat nieuwe tegels geladen worden.
+    _eigenZoom = true;
+    try { volgVerplaats(L.latLng(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit)), z, tnu); } finally { _eigenZoom = false; }
     if (kaart.setBearing) { try { kaart.setBearing(-_volgNu.hoek); } catch {} }
     const dh = Math.abs(((_volgDoel.hoek - _volgNu.hoek + 540) % 360) - 180);
-    if (!rijdt && dh < 0.3) { _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
+    if (!rijdt && dh < 0.3 && !_zoomBeweegt) { volgAfsluiten(); _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
     _volgAnim = requestAnimationFrame(stap);
   };
   _volgAnim = requestAnimationFrame(stap);
@@ -2695,6 +2746,11 @@ function toonTC(t, gem, rest, afg) {
   toonFlitsMelding("Trajectcontrole", t.max ? "Max. " + t.max + " km/u" : "", t.max, { deel: afg / (afg + rest), gem, max: t.max, rest });
 }
 const kmTekst = m => m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
+$("zoomKeuze").value = _zoomModus;
+$("zoomKeuze").onchange = () => {
+  _zoomModus = $("zoomKeuze").value; _zoomAuto = null; _zoomExtra = 0;
+  try { localStorage.setItem("lk-boord-zoom", _zoomModus); } catch {}
+};
 $("flitsKeuze").value = _flitsKeuze;
 $("flitsKeuze").onchange = () => {
   _flitsKeuze = $("flitsKeuze").value;
