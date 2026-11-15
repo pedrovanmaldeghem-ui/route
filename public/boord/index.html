@@ -386,6 +386,12 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
   display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.45)}
 #snelmeter .max b{color:#111;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
 #snelmeter .max.leeg{border-color:#888}
+/* Meer dan 3 km/u boven de limiet: het snelheidsvak wordt rood en knippert. */
+#snelmeter.te .nu{background:#dc2626; border-color:#fecaca; animation:snelknip .7s ease-in-out infinite}
+#snelmeter.te .nu small{color:#fee2e2}
+#snelmeter.te .max{animation:maxknip .7s ease-in-out infinite}
+@keyframes maxknip{0%,100%{background:#fff; transform:scale(1)} 50%{background:#fecaca; transform:scale(1.12)}}
+@keyframes snelknip{0%,100%{background:#dc2626; box-shadow:0 0 0 0 rgba(220,38,38,.75)} 50%{background:#7f1d1d; box-shadow:0 0 0 12px rgba(220,38,38,0)}}
 #snelmeter .max.leeg b{color:#888;font-size:22px}
 /* Omleiding-overlay statusregels. */
 .omlstatus{border-radius:10px;padding:12px 14px;font-size:16px;font-weight:600;margin-bottom:12px}
@@ -1705,8 +1711,10 @@ function werkSnelmeterBij() {
   const mx = $("snelMax"), b = mx && mx.querySelector("b"); if (!b) return;
   const lim = maxLimietVoor();
   // Waar de limiet onbekend is: het bord gewoon weglaten (niet tonen) i.p.v. een lege "–".
-  if (lim != null) { mx.style.display = ""; b.textContent = String(lim); }
+  // Bekende limiet: gewoon verkeersbord (rode rand), niet meer het grijze 'onbekend'-bord.
+  if (lim != null) { mx.style.display = ""; mx.classList.remove("leeg"); b.textContent = String(lim); }
   else { mx.style.display = "none"; }
+  $("snelmeter").classList.toggle("te", lim != null && _snelheid != null && Math.round(_snelheid) > lim + 3);
 }
 function render() {
   if (!OMLOOP || !RIT) return;
@@ -2574,8 +2582,8 @@ function flitsAandacht(sleutel, max, tc) {
     try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch {}
   }
   _flitsSleutel = sleutel;
-  // Te snel? Live snelheid boven de limiet (+2 km/u marge), of in een trajectcontrole het gemiddelde erboven.
-  const te = !!sleutel && !!max && ((_snelheid != null && _snelheid > max + 2) || (!!tc && tc.gem != null && tc.gem > max));
+  // Te snel? Live snelheid meer dan 3 km/u boven de limiet, of in een trajectcontrole het gemiddelde erboven.
+  const te = !!sleutel && !!max && ((_snelheid != null && Math.round(_snelheid) > max + 3) || (!!tc && tc.gem != null && tc.gem > max));
   rand.classList.toggle("te", te);
   if (!sleutel) rand.classList.remove("nieuw");
 }
