@@ -178,6 +178,12 @@ body.donker #routewaar{background:#8b1d14}
 /* Voortgangsbalk gearceerd wanneer je van de route afwijkt (positie onzeker). */
 .balk.offroute{background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.28) 0 5px, rgba(255,255,255,.3) 5px 10px)}
 /* ---------- Donkere modus (nachtrijden) ---------- */
+/* Extra verdonkering in donkere modus: een zwarte laag over alles, kliks gaan er gewoon door. */
+#dimlaag{position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:5000; transition:opacity .2s}
+.dimrij{display:none; align-items:center; gap:12px; padding:6px 4px 10px 44px; font-size:15px}
+body.donker .dimrij{display:flex}
+.dimrij input{flex:1; accent-color:var(--blauw); height:28px}
+.dimrij b{min-width:42px; text-align:right; font-variant-numeric:tabular-nums}
 /* Standaard zijn de panelen licht (goed bij daglicht); in donkere modus draaien ze terug naar donker. */
 #rij.donker #lijstwrap{background:var(--bg); color:var(--tekst)}
 #rij.donker .tl li{border-left-color:var(--lijn)}
@@ -217,7 +223,7 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker #balkbtns .knop{background:#223; color:var(--tekst); border-color:var(--lijn)}
 /* Donkere kaart: we inverteren enkel de tegellaag (dezelfde gecachte tegels, dus geen extra data).
    De route, haltebollen en live-bol zitten in aparte Leaflet-lagen en behouden hun echte kleuren. */
-#rij.donker .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.95)}
+#rij.donker .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(var(--kaartlicht, 1.2)) contrast(.95)}
 /* De basis is overdag wit; in donkere modus (nachtrijden) gaan ook de opstart-, pauze- en
    menuschermen terug naar donker, zodat er 's nachts niets fel wit oplicht. */
 body.donker{background:var(--bg);color:var(--tekst)}
@@ -519,6 +525,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="menuknoppen" id="menuActies">
       <button class="knop" id="menuOverzicht"><i data-ic="wissel"></i>Rit wisselen</button>
       <button class="knop" id="menuThema"><i data-ic="instel"></i><span>Donkere modus</span></button>
+      <label class="dimrij" id="dimRij"><span>Hoe donker</span><input type="range" id="dimBalk" min="0" max="100" step="5" value="30"><b id="dimWaarde">30%</b></label>
       <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
       <button class="knop" id="menuMelden"><i data-ic="bericht"></i>Probleem of suggestie melden</button>
       <button class="knop" id="menuTerug"><i data-ic="stop"></i>Loop afsluiten</button>
@@ -526,6 +533,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   </div>
 </div>
 
+<div id="dimlaag"></div>
 <!-- Probleem/suggestie melden -->
 <div class="overlay" id="meldov">
   <div class="blad">
@@ -2429,7 +2437,20 @@ function pasThemaToe() {
   $("rij").classList.toggle("donker", donker);
   document.body.classList.toggle("donker", donker); // ook de opstart-/pauze-/menuschermen
   $("menuThema").querySelector("span").textContent = donker ? "Lichte modus" : "Donkere modus";
+  // 0–60: enkel de kaart wordt donkerder (helderheid 1,5 → 0,9). Boven 60 komt er ook een zwarte laag
+  // over het hele scherm, tot 60 % bij 100.
+  document.documentElement.style.setProperty("--kaartlicht", (1.5 - Math.min(_dim, 60) / 100).toFixed(2));
+  $("dimlaag").style.opacity = donker ? Math.max(0, (_dim - 60) * 1.5 / 100).toFixed(2) : 0;
+  $("dimBalk").value = _dim; $("dimWaarde").textContent = _dim + "%";
 }
+// Hoe donker de donkere modus is (0 = licht, 100 = heel donker). Standaard 30: de kaart iets lichter dan vroeger.
+let _dim = 30;
+try { const v = localStorage.getItem("lk-boord-dim"); if (v != null) _dim = Math.max(0, Math.min(100, parseInt(v, 10) || 0)); } catch {}
+$("dimBalk").oninput = () => {
+  _dim = +$("dimBalk").value;
+  try { localStorage.setItem("lk-boord-dim", String(_dim)); } catch {}
+  pasThemaToe();
+};
 $("menuThema").onclick = () => {
   donker = !donker;
   try { localStorage.setItem("lk-boord-thema", donker ? "donker" : "licht"); } catch {}
