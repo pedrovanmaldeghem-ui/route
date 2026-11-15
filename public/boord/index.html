@@ -139,6 +139,13 @@ body.donker .goed{color:#b6f0bd}
   display:flex; align-items:center; justify-content:center; color:#fff}
 .fpmk div.r{background:#b91c1c}
 .fpmk div.tc{background:#1d4ed8; font:800 10px/1 system-ui}
+/* De flitspaal waar je naartoe rijdt: groter en rood knipperend op de kaart, zolang de melding staat. */
+.fpmk div.knip{animation:fpknip .7s ease-in-out infinite; transform:scale(1.35)}
+@keyframes fpknip{0%,100%{background:#dc2626; box-shadow:0 0 0 0 rgba(220,38,38,.7)} 50%{background:#7f1d1d; box-shadow:0 0 0 10px rgba(220,38,38,0)}}
+.leaflet-marker-icon.fpmk.knipt{z-index:900 !important}
+/* Ook het icoon in de melding knippert rood. */
+.smeld.flits.aan > .ic{animation:fmicoon .7s ease-in-out infinite}
+@keyframes fmicoon{0%,100%{color:#dc2626} 50%{color:#fca5a5}}
 .fpmk svg{width:16px; height:16px; fill:currentColor}
 .fpbron{font-size:12px; opacity:.7; margin:-4px 4px 8px 44px}
 #tp{display:flex; align-items:center; gap:12px; background:#fff; color:#111; padding:9px 14px; font-weight:700; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
@@ -2543,12 +2550,20 @@ function tekenFlits(pos) {
   if (_flitsKeuze === "uit") { if (_flitsLaag) { kaart.removeLayer(_flitsLaag); _flitsLaag = null; } return; }
   if (_flitsLaag && _flitsMid && meter(_flitsMid, pos) < 1500) return;
   if (_flitsLaag) kaart.removeLayer(_flitsLaag);
-  _flitsLaag = L.layerGroup(); _flitsMid = pos;
+  _flitsLaag = L.layerGroup(); _flitsMid = pos; _flitsMk = {};
   for (const c of FLITS.p) if (meter(pos, [c.lat, c.lon]) < 6000)
-    _flitsLaag.addLayer(L.marker([c.lat, c.lon], { icon: flitsIcoon(c.rood ? "r" : "", FLITS_SVG), interactive: false, keyboard: false }));
-  for (const t of FLITS.tc) for (const [pt, lbl] of [[t.van, "TC"], [t.tot, "■"]]) if (meter(pos, pt) < 6000)
-    _flitsLaag.addLayer(L.marker(pt, { icon: flitsIcoon("tc", lbl), interactive: false, keyboard: false }));
+    _flitsLaag.addLayer(_flitsMk[c.id] = L.marker([c.lat, c.lon], { icon: flitsIcoon(c.rood ? "r" : "", FLITS_SVG), interactive: false, keyboard: false }));
+  for (const t of FLITS.tc) for (const [pt, lbl, k] of [[t.van, "TC", t.id + "v"], [t.tot, "■", t.id + "e"]]) if (meter(pos, pt) < 6000)
+    _flitsLaag.addLayer(_flitsMk[k] = L.marker(pt, { icon: flitsIcoon("tc", lbl), interactive: false, keyboard: false }));
   _flitsLaag.addTo(kaart);
+  const a = _flitsKnip; _flitsKnip = null; markeerFlits(a); // na het hertekenen opnieuw laten knipperen
+}
+let _flitsMk = {}, _flitsKnip = null;
+function markeerFlits(k) {
+  if (k === _flitsKnip) return;
+  const zet = (key, aan) => { const el = key && _flitsMk[key] && _flitsMk[key].getElement(); if (!el) return;
+    el.classList.toggle("knipt", aan); const d = el.firstElementChild; if (d) d.classList.toggle("knip", aan); };
+  zet(_flitsKnip, false); zet(k, true); _flitsKnip = k;
 }
 function hoekVerschil(a, b) { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
 let _flitsSleutel = null;
@@ -2582,7 +2597,7 @@ function flitsCheck() {
   if (!FLITS) { laadFlits(); return; }
   const pos = flitsPos(); if (!pos) { toonFlitsMelding(null); return; }
   tekenFlits(pos);
-  if (_flitsKeuze !== "aan") { toonFlitsMelding(null); return; }
+  if (_flitsKeuze !== "aan") { markeerFlits(null); toonFlitsMelding(null); return; }
   const voor = (pt) => _bewHoek == null || hoekVerschil(koers(pos, pt), _bewHoek) < 50;
   // 1) Lopende trajectcontrole: tot vlak bij het einde (of duidelijk ervan weg).
   if (_flitsTC) {
@@ -2592,7 +2607,7 @@ function flitsCheck() {
     const gem = (sec > 10 && _flitsTC.afg > 50) ? Math.round(_flitsTC.afg / sec * 3.6) : null;
     if (dEind < 60) { _tcEinde = { gem, max: t.max, tot: Date.now() + 15000 }; _flitsTC = null; }
     else if (dEind > lengte + 3000) _flitsTC = null;
-    else { toonTC(t, gem, dEind, _flitsTC.afg); return; }
+    else { markeerFlits(t.id + "e"); toonTC(t, gem, dEind, _flitsTC.afg); return; }
   }
   if (_tcEinde) {
     if (Date.now() < _tcEinde.tot) { toonFlitsMelding("Einde trajectcontrole", _tcEinde.max ? "Max. " + _tcEinde.max + " km/u" : "", _tcEinde.max, { deel: 1, gem: _tcEinde.gem, max: _tcEinde.max }); return; }
@@ -2616,8 +2631,9 @@ function flitsCheck() {
   // net aan dit einde begint).
   for (const t of FLITS.tc) if (Math.abs(t.van[0] - pos[0]) < 0.01 && Math.abs(t.van[1] - pos[1]) < 0.015
     && (_bewHoek == null || hoekVerschil(koers(t.van, t.tot), _bewHoek) < 70)) kijk(t.id, t.van, "tc", t);
-  if (_flitsTC) { toonTC(_flitsTC.tc, null, meter(pos, _flitsTC.tc.tot), 0); return; }
-  if (!best) { toonFlitsMelding(null); return; }
+  if (_flitsTC) { markeerFlits(_flitsTC.tc.id + "e"); toonTC(_flitsTC.tc, null, meter(pos, _flitsTC.tc.tot), 0); return; }
+  if (!best) { markeerFlits(null); toonFlitsMelding(null); return; }
+  markeerFlits(best.soort === "tc" ? best.obj.id + "v" : best.obj.id);
   const o = best.obj, afst = best.d < 30 ? "nu" : "over " + Math.round(best.d / 10) * 10 + " m";
   if (best.soort === "tc") toonFlitsMelding("Trajectcontrole " + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
   else toonFlitsMelding((o.rood ? "Roodlicht-/flitscamera " : "Flitspaal ") + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
