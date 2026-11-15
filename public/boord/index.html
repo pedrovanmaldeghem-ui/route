@@ -1992,7 +1992,8 @@ function startGps() {
       return;
     }
     const sn = snap(laatstePos, RIT.geo); // s/afwijking langs de route (gesnapt)
-    sn.mLat = laatstePos[0]; sn.mLon = laatstePos[1]; // de bol staat op je ECHTE locatie
+    sn.mLat = laatstePos[0]; sn.mLon = laatstePos[1]; // je ECHTE locatie
+    sn.nauw = pos.coords && pos.coords.accuracy; // GPS-nauwkeurigheid (m), bepaalt of de bol op de route mag
     // Sta je ver van de route (bv. omleiding of nog op weg ernaartoe), dan laten we de schema-positie
     // staan waar ze stond i.p.v. ze te laten verspringen, maar we draaien de kaart wél optimaal mee met
     // je echte rijrichting (_bewHoek) en markeren de toestand als 'off-route' (zodat de balk arceert).
@@ -2214,6 +2215,11 @@ function volgZoom(dt) {
 // s = afstand langs de route (of null buiten de route). Met s glijdt de bol LANGS de routelijn (ook door
 // bochten), zonder s in een rechte lijn tussen twee GPS-posities.
 function volgSegment(lat1, lon1, s1, t0, dur) {
+  // Kwam de bol net van buiten de route (s onbekend), zoek dan zijn plek langs de route op.
+  if (s1 != null && _volgNu.s == null && RIT && RIT.geo) {
+    const sn = snap([_volgNu.lat, _volgNu.lon], RIT.geo);
+    if (sn.afstand < 3) _volgNu.s = sn.s;
+  }
   const langsRoute = s1 != null && _volgNu.s != null && Math.abs(s1 - _volgNu.s) < 250;
   return { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1, lon1, t0, dur,
     s0: langsRoute ? _volgNu.s : null, s1: langsRoute ? s1 : null };
@@ -2321,15 +2327,18 @@ function richtHoek(s0) {
   if (eind[0] === pA[0] && eind[1] === pA[1]) return null;
   return koers(pA, eind);
 }
-const BOL_OP_ROUTE = 35; // m
+// Binnen deze afstand van de routelijn staat de bol óp de route. Minstens 50 m, en ruimer als de GPS zelf
+// onnauwkeurig is (stilstaand tussen gebouwen of bomen meldt een telefoon vaak 50-100 m), max 140 m
+// (daarboven geldt je als 'off-route' en toont de bol je echte locatie).
+function bolOpRouteMarge(sn) { return Math.min(140, Math.max(50, 1.5 * (sn.nauw || 0))); }
 function zetMarker() {
   if (!laatsteSnap) return;
-  // Rij je op de route (GPS binnen BOL_OP_ROUTE m van de lijn), dan staat de bol óp de routelijn, op je
+  // Rij je op de route (GPS binnen bolOpRouteMarge m van de lijn), dan staat de bol óp de routelijn, op je
   // positie langs de route: GPS schommelt een paar meter en anders zweeft de bol naast de weg. Wijk je
   // echt af (omleiding, nog op weg naar de start), dan staat hij op je echte locatie (mLat/mLon).
   let lat = laatsteSnap.mLat, lon = laatsteSnap.mLon, sBol = null;
   const opRoute = !RIT.enkelDoel && !laatsteSnap.offRoute && RIT.pts && RIT.pts.length > 1 && laatsteSnap.s != null
-    && (laatsteSnap.afstand == null || laatsteSnap.afstand <= BOL_OP_ROUTE);
+    && (laatsteSnap.afstand == null || laatsteSnap.afstand <= bolOpRouteMarge(laatsteSnap));
   if (opRoute) { const pt = puntOpS(laatsteSnap.s); lat = pt[0]; lon = pt[1]; sBol = laatsteSnap.s; }
   if (lat == null) { lat = laatsteSnap.lat; lon = laatsteSnap.lon; }
   if (lat == null) { const pt = puntOpS(laatsteSnap.s); lat = pt[0]; lon = pt[1]; }
