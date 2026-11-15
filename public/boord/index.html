@@ -224,6 +224,7 @@ body.donker #routewaar{background:#8b1d14}
 /* Donkere kaart: we inverteren enkel de tegellaag (dezelfde gecachte tegels, dus geen extra data).
    De route, haltebollen en live-bol zitten in aparte Leaflet-lagen en behouden hun echte kleuren. */
 #rij .leaflet-tile-pane{filter:brightness(var(--kaartlicht, 1))}
+.tegels-rustig{filter:saturate(.2) contrast(.8) brightness(1.06)}
 #rij.donker .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(var(--kaartlicht, 1.2)) contrast(.95)}
 /* De basis is overdag wit; in donkere modus (nachtrijden) gaan ook de opstart-, pauze- en
    menuschermen terug naar donker, zodat er 's nachts niets fel wit oplicht. */
@@ -526,6 +527,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="menuknoppen" id="menuActies">
       <button class="knop" id="menuOverzicht"><i data-ic="wissel"></i>Rit wisselen</button>
       <button class="knop" id="menuThema"><i data-ic="instel"></i><span>Donkere modus</span></button>
+      <label class="dimrij"><span>Kaart</span><select id="kaartStijl" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="osm">Gedetailleerd</option><option value="rustig">Rustig (gedempte kleuren)</option><option value="grijs">Eenvoudig (lichtgrijs)</option></select></label>
       <label class="dimrij" id="dimRij"><span>Helderheid</span><i title="donkerder">−</i><input type="range" id="dimBalk" min="-50" max="50" step="5" value="0"><i title="lichter">+</i><b id="dimWaarde">0</b></label>
       <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
       <button class="knop" id="menuMelden"><i data-ic="bericht"></i>Probleem of suggestie melden</button>
@@ -1917,8 +1919,21 @@ function stopPosDelen() { if (_posTimer) { clearInterval(_posTimer); _posTimer =
 // telefoon max. één keer gedownload en daarna hergebruikt (ook over sessies/dagen heen). Een chauffeur
 // die dagelijks dezelfde routes rijdt, verbruikt zo na de eerste keer bijna geen data meer voor de kaart.
 // Bij een probleem (geen Cache API, offline, fout) valt elke tegel terug op gewoon rechtstreeks laden.
-function tegelLaag() {
-  const laag = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, crossOrigin: true, attribution: "© OpenStreetMap" });
+// Kaartstijl (menu): gedetailleerd = gewone OpenStreetMap; rustig = dezelfde kaart met gedempte kleuren;
+// eenvoudig = de lichtgrijze Esri-kaart (enkel wegen, water en namen), zodat route en haltes opvallen.
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+const KAARTSTIJLEN = {
+  osm: [{ url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19 }],
+  rustig: [{ url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, klasse: "tegels-rustig" }],
+  grijs: [{ url: ESRI + "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", max: 19, nat: 16 },
+          { url: ESRI + "World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", max: 19, nat: 16 }],
+};
+let _kaartStijl = "osm";
+try { const v = localStorage.getItem("lk-boord-kaartstijl"); if (KAARTSTIJLEN[v]) _kaartStijl = v; } catch {}
+let _tegels = null;
+function tegelLaag() { return L.layerGroup((KAARTSTIJLEN[_kaartStijl] || KAARTSTIJLEN.osm).map(eenTegelLaag)); }
+function eenTegelLaag(st) {
+  const laag = L.tileLayer(st.url, { maxZoom: st.max, maxNativeZoom: st.nat || st.max, className: st.klasse || "", crossOrigin: true, attribution: "© OpenStreetMap, © Esri" });
   laag.createTile = function (coords, done) {
     const img = document.createElement("img"); img.alt = "";
     const url = this.getTileUrl(coords);
@@ -1946,7 +1961,7 @@ function maakKaart() {
   const c0 = RIT.enkelDoel ? RIT.doel : [RIT.pts[0][0], RIT.pts[0][1]];
   // touchRotate aan: in vrije modus mag de chauffeur de kaart zelf draaien (twee vingers).
   kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0 }).setView(c0, 15);
-  tegelLaag().addTo(kaart);
+  _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
   if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: ROUTEKLEUR, weight: 9, opacity: 1 }).addTo(kaart);
   gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .75 }).addTo(kaart);
@@ -2450,6 +2465,12 @@ function pasThemaToe() {
 }
 const _helder = { donker: 0, licht: 0 };
 try { for (const m of ["donker", "licht"]) { const x = parseInt(localStorage.getItem("lk-boord-helder-" + m) || "0", 10); _helder[m] = Math.max(-50, Math.min(50, x || 0)); } } catch {}
+$("kaartStijl").value = _kaartStijl;
+$("kaartStijl").onchange = () => {
+  _kaartStijl = $("kaartStijl").value;
+  try { localStorage.setItem("lk-boord-kaartstijl", _kaartStijl); } catch {}
+  if (kaart) { if (_tegels) kaart.removeLayer(_tegels); _tegels = tegelLaag().addTo(kaart); }
+};
 $("dimBalk").oninput = () => {
   const m = donker ? "donker" : "licht";
   _helder[m] = +$("dimBalk").value;
