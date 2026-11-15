@@ -77,6 +77,12 @@ body.donker .goed{color:#b6f0bd}
 .afw small{display:block; font-size:11px; font-weight:600; opacity:.85; letter-spacing:.03em}
 /* Enkel het uur (klok) extra groot — de rest blijft rustig zoals ervoor. */
 .klokgroot{font-size:40px; display:flex; align-items:center; justify-content:center; gap:8px; flex:0 0 auto}
+/* Wachten aan een halte: aftelklok in een kader met een geel pauze-icoon, zodat meteen duidelijk is dat je moet wachten. */
+.klokgroot.wacht{border:3px solid currentColor; border-radius:12px; padding:0 12px 0 6px; line-height:1.15; background:rgba(0,0,0,.18)}
+#kop.wit .klokgroot.wacht{background:rgba(0,0,0,.06)}
+#klokhand{display:inline-flex; align-items:center}
+#klokhand .icvak{width:1.05em; height:1.05em; margin:0; border-radius:8px}
+#klokhand .icvak .ic{width:.7em; height:.7em}
 .badges{display:flex; align-items:center; gap:6px; flex:1 1 0; justify-content:flex-end}
 .lijnbadge{padding:3px 9px; border-radius:7px; font-weight:800; font-size:20px}
 .box{border:2px solid rgba(255,255,255,.85); border-radius:6px; padding:2px 7px; font-weight:700; font-size:15px}
@@ -457,7 +463,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   <div id="kop" class="groen">
     <div class="kopboven">
       <div class="afw" id="afw"></div>
-      <div class="klokgroot" id="klok"><span id="klokhand" style="display:none">✋</span><span id="klokt">--:--</span></div>
+      <div class="klokgroot" id="klok"><span id="klokhand" style="display:none"><i data-ic="pauze"></i></span><span id="klokt">--:--</span></div>
       <div class="badges">
         <span class="lijnbadge" id="blijn">–</span>
         <span class="box" id="bintern">–</span>
@@ -1637,7 +1643,7 @@ function render() {
   $("tptijd").textContent = OMLOOP.vrij ? "" : focus ? (focus.tijd || "--:--") : "--:--";
   $("tpnaam").textContent = focus ? focus.naam : "–";
   // afwijking
-  if (s == null) { zetKop("wit", "– gps –", _gpsGeweigerd ? "locatie geweigerd: sta locatie toe voor deze site in je instellingen" : "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; }
+  if (s == null) { zetKop("wit", "– gps –", _gpsGeweigerd ? "locatie geweigerd: sta locatie toe voor deze site in je instellingen" : "wacht op positie"); $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; $("klok").classList.remove("wacht"); }
   else {
     const schema = OMLOOP.vrij ? nu() : schemaOp(s, halten, halteS);
     const dev = nu() - schema; // >0 te laat, <0 te vroeg (vrije rit: altijd 0, dus wit en geen getal)
@@ -1661,8 +1667,8 @@ function render() {
     // Aftelklok: telt af tot het vertrek van de focus-halte zolang je binnen 20 m ervan bent (voor én
     // ná). Verder van de halte tonen we gewoon de klok (huidige tijd).
     const secTot = (!OMLOOP.vrij && bijFocus && focus.min != null) ? (focus.min - nu()) * 60 : -1;
-    if (secTot > 0) { $("klokhand").style.display = ""; $("klokt").textContent = klokHHMMSS(secTot); }
-    else { $("klokhand").style.display = "none"; $("klokt").textContent = klokStr(); }
+    if (secTot > 0) { $("klokhand").style.display = ""; $("klok").classList.add("wacht"); $("klokt").textContent = klokHHMMSS(secTot); }
+    else { $("klokhand").style.display = "none"; $("klok").classList.remove("wacht"); $("klokt").textContent = klokStr(); }
     // Voortgangsbalk vult (grijs) het stuk van de vorige halte tot de focus-halte — indicatie hoe ver
     // tot de volgende halte, niet over de hele rit.
     const sPrev = (fi > 0 && halteS[fi - 1] != null) ? halteS[fi - 1] : (halteS[0] != null ? halteS[0] : 0);
@@ -1706,7 +1712,7 @@ function renderEnkelDoel() {
   const doelH = RIT.halten[0];
   $("tptijd").textContent = doelH.tijd || (OMLOOP.vrij ? "" : "--:--");
   $("tpnaam").textContent = RIT.naar || doelH.naam;
-  $("klokt").textContent = klokStr(); $("klokhand").style.display = "none";
+  $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; $("klok").classList.remove("wacht");
   $("balk").classList.remove("offroute");
   if (d == null) { zetKop("wit", "– gps –"); $("balkvul").style.width = "0%"; $("balkpos").style.left = "0%"; if (kaart && laatsteSnap) zetMarker(); return; }
   if (_enkelRef == null || d > _enkelRef) _enkelRef = Math.max(d, 100); // referentie = verste afstand gezien
