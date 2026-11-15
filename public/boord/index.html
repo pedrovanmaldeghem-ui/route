@@ -92,6 +92,21 @@ body.donker .goed{color:#b6f0bd}
 /* De huidige halte: enige weergave, bovenaan, groot (23 px) — zichtbaar bij Halten én Kaart. */
 /* De balk met de huidige halte krijgt exact dezelfde timeline-opmaak als een rij in de lijst eronder:
    het streepje (border-left) en het bolletje (::before) vóór het uur, en een even brede uur-kolom. */
+/* Statusmeldingen bovenaan het rijscherm: offline (grijs, informatief) en GPS-probleem (rood, met oplossing). */
+#meldingen{display:flex; flex-direction:column}
+.smeld{display:none; align-items:flex-start; gap:12px; padding:10px 14px; border-bottom:1px solid #d0d5dd; font-size:15px; line-height:1.35}
+.smeld.aan{display:flex}
+.smeld > .ic{width:26px; height:26px; margin-top:2px}
+.smeld b{display:block; font-size:16px}
+.smeld.grijs{background:#eef0f3; color:#15181d}
+.smeld.rood{background:#fde8e8; color:#15181d; border-color:#f3b4b4}
+.smeld.rood b{color:#c62828}
+.smeld.rood > .ic{color:#c62828}
+.smeld .knop{margin-top:8px; display:inline-flex; align-items:center; gap:6px; background:#fff; color:var(--blauw); border-color:var(--blauw); font-weight:600; font-size:15px; padding:8px 14px}
+#rij.donker .smeld.grijs{background:#223; color:var(--tekst); border-color:var(--lijn)}
+#rij.donker .smeld.rood{background:#3a1717; color:var(--tekst); border-color:#6b2a2a}
+#rij.donker .smeld.rood b,#rij.donker .smeld.rood > .ic{color:#ff8a80}
+#rij.donker .smeld .knop{background:transparent; color:#6ab0e0; border-color:#6ab0e0}
 #tp{display:flex; align-items:center; gap:12px; background:#fff; color:#111; padding:9px 14px; font-weight:700; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
 #tp::before{content:""; position:absolute; left:-9px; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #9aa4b2}
 #tp .tpt{font-size:20px; flex:none; min-width:60px; font-variant-numeric:tabular-nums} #tp .tpn{font-size:20px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -201,7 +216,9 @@ body.donker #omlnr,body.donker select,body.donker input[type=search]{background:
 body.donker .knop:not(.primair){background:#223;color:var(--tekst);border-color:var(--lijn)}
 body.donker #setup .sub,body.donker .hint,body.donker .kaartje h2,body.donker #pauze .waarsch,body.donker .ritkeuze .rn,body.donker .omlkaart .per,body.donker .omlkaart .red{color:var(--muted)}
 body.donker .blad{background:var(--paneel)}
-body.donker #pauze .volgrit{background:var(--paneel);border-color:var(--lijn)}
+body.donker #pauze .pkaart{background:var(--paneel);border-color:var(--lijn);box-shadow:none}
+body.donker #pauze .volgrit .pvert{color:var(--muted)}
+body.donker #pauze .pbalk{background:var(--lijn)}
 body.donker #gate{background:var(--bg)}
 body.donker .ritkeuze button.huidig{background:#122}
 body.donker .omlkaart{background:#0b0e13;border-color:var(--lijn)}
@@ -225,11 +242,19 @@ body.donker .omlstatus.waar{color:#ffd9a8;background:rgba(232,130,12,.16)}
 #intro .start:active{transform:translateY(1px)}
 
 /* ---------- Pauze ---------- */
-#pauze{align-items:center; justify-content:center; text-align:center; padding:calc(24px + var(--sat)) 24px 24px; gap:18px}
-#pauze .aftel{font-size:56px; font-weight:800; color:#4da3ff; font-variant-numeric:tabular-nums}
-#pauze .waarsch{color:#5a626e; max-width:440px; line-height:1.4}
-#pauze .volgrit{background:#f7f8fa; border:1px solid #e4e7ec; border-radius:12px; padding:14px 18px; font-size:17px}
-#pauze .volgrit b{font-size:20px}
+#pauze{align-items:center; justify-content:center; text-align:center; padding:calc(20px + var(--sat)) 16px 20px; overflow-y:auto}
+#pauze .pkaart{width:100%; max-width:460px; background:#fff; border:1px solid #e4e7ec; border-radius:16px; box-shadow:0 2px 10px rgba(16,24,40,.08); padding:22px 18px 18px; display:flex; flex-direction:column; align-items:center; gap:10px}
+#pauze .pkoffie .ic{width:44px; height:44px}
+#pauze .ptitel{font-size:28px; font-weight:800; margin:0}
+#pauze .volgrit{font-size:17px; line-height:1.4}
+#pauze .volgrit .pvert{color:#5a626e; font-size:15px}
+#pauze .aftel{font-size:52px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:1px; line-height:1.1}
+#pauze .pbalk{width:100%; height:10px; background:#e4e7ec; border-radius:6px; overflow:hidden; margin:4px 0 6px}
+#pauze .pbalk i{display:block; height:100%; width:0; background:var(--blauw); border-radius:6px; transition:width 1s linear}
+#pauze .pknoppen{display:flex; gap:10px; width:100%}
+#pauze .pknoppen .knop{flex:1; display:flex; align-items:center; justify-content:center; gap:6px; font-size:15px; padding:13px 6px; font-weight:600; white-space:nowrap}
+#pauze .pknoppen .icvak{background:transparent; color:inherit; margin:0; width:auto}
+#pauze .waarsch{color:#5a626e; max-width:460px; line-height:1.4; font-size:14px; margin:12px 4px 0}
 
 /* ---------- Ritmenu overlay ---------- */
 .overlay{position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:flex-end; z-index:900}
@@ -404,11 +429,18 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 
 <!-- Pauze tussen ritten -->
 <section id="pauze" class="scherm">
-  <div class="volgrit" id="pauzeVolg"></div>
-  <div class="aftel" id="pauzeKlok">–:–</div>
+  <div class="pkaart">
+    <div class="pkoffie"><i data-ic="koffie"></i></div>
+    <h2 class="ptitel">Pauze</h2>
+    <div class="volgrit" id="pauzeVolg"></div>
+    <div class="aftel" id="pauzeKlok">–:–</div>
+    <div class="pbalk"><i id="pauzeBalk"></i></div>
+    <div class="pknoppen">
+      <button class="knop primair" id="pauzeStart"><i data-ic="start"></i>Rit nu starten</button>
+      <button class="knop" id="pauzeMenu"><i data-ic="lijst"></i>Andere rit kiezen</button>
+    </div>
+  </div>
   <p class="waarsch">Klik dit pauzescherm nooit weg voordat je op je vertrekpunt staat (anders lijkt je rit al gestart en ben je aan het vroegrijden).</p>
-  <button class="knop primair" id="pauzeStart">Rit manueel starten</button>
-  <button class="knop" id="pauzeMenu">Andere rit kiezen</button>
 </section>
 
 <!-- Omloop-overzicht (bij het starten van een omloop) -->
@@ -434,6 +466,10 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
       </div>
     </div>
     <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
+  </div>
+  <div id="meldingen">
+    <div class="smeld grijs" id="meldOffline"><i data-ic="offline"></i><div><b>Offline modus</b>Je bent tijdelijk zonder internet. Dienstregeling en route blijven beschikbaar.</div></div>
+    <div class="smeld rood" id="meldGps"><i data-ic="waarschuw"></i><div><b>Locatie (GPS) niet beschikbaar</b><span id="meldGpsTxt">Geef toegang tot je locatie om de rit en haltes automatisch te volgen.</span><br><button class="knop" id="meldGpsKnop"><i data-ic="halte"></i>Locatietoegang instellen</button></div></div>
   </div>
   <div id="tp"><span class="tpt" id="tptijd">--:--</span><span class="tpn" id="tpnaam">–</span></div>
   <div id="body">
@@ -585,6 +621,10 @@ const IC = {
   halte: _sv('<path d="M12 21s-7-6.2-7-11.5a7 7 0 1 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5" fill="currentColor"/>'),
   vertrek: _sv('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
   nav: _sv('<path d="M12 2 5 21l7-4 7 4z"/>'),
+  koffie: _sv('<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10.5h1.5a2.5 2.5 0 0 1 0 5H17M8 3.5v2.5M12 3.5v2.5"/>'),
+  lijst: _sv('<path d="M9 6h12M9 12h12M9 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/>'),
+  offline: _sv('<path d="M2 8.8a15 15 0 0 1 4.2-2.6M10.7 5.1A15 15 0 0 1 22 8.8M5 12.6a10 10 0 0 1 3.3-2.1M15.6 10.6A10 10 0 0 1 19 12.6M8.5 16.1a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>'),
+  waarschuw: _sv('<path d="M12 3 2 20.5h20z"/><path d="M12 10v4.5M12 17.5h.01"/>'),
   label: _sv('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/>'),
 };
 function vulIconen(root) { (root || document).querySelectorAll("i[data-ic]").forEach(i => { if (IC[i.dataset.ic]) i.outerHTML = IC[i.dataset.ic]; }); }
@@ -1326,18 +1366,33 @@ function toonPauze() {
   if (RITI === 0) leegTxt = `<div style="font-style:italic;opacity:.85;margin-bottom:6px">↳ eerst lege rit vanaf stelplaats naar ${esc(row[2])}</div>`;
   // Een lege rit tussen twee beladen ritten wordt nu actief gereden vóór deze pauze, dus die melden we
   // hier niet meer (enkel de lege rit vanaf de stelplaats bij de allereerste rit blijft staan).
-  $("pauzeVolg").innerHTML = leegTxt + `Volgende rit:<br><b>${esc(row[1])} — ${esc(row[3])}</b><br>vertrek ${esc(row[4])} · ${esc(row[2])}`;
+  $("pauzeVolg").innerHTML = leegTxt + `Tot volgende rit: <b>${row[0] ? "Rit " + esc(row[0]) : "Lijn " + esc(row[1])} – ${esc(row[3])}</b><div class="pvert">vertrek ${esc(row[4])} · ${esc(row[2])}</div>`;
+  // Begin van de pauze onthouden per omloop + rit, zodat de voortgangsbalk niet opnieuw begint na een
+  // schermwissel, een herstart van de app of het herladen van de pagina.
+  _pauzeSleutel = "pauzeBegin:" + (OMLOOP.key || OMLOOP.routeId || "") + ":" + RITI + ":" + row[4];
+  try { _pauzeBegin = Number(localStorage.getItem(_pauzeSleutel)) || 0; } catch { _pauzeBegin = 0; }
+  if (!_pauzeBegin || Date.now() - _pauzeBegin > 12 * 3600e3) {
+    _pauzeBegin = Date.now(); try { localStorage.setItem(_pauzeSleutel, String(_pauzeBegin)); } catch {}
+  }
   toon("pauze");
   tikPauze();
   clearInterval(window._pt); window._pt = setInterval(tikPauze, 1000);
 }
+let _pauzeBegin = 0, _pauzeSleutel = "";
+const _hhmmss = sec => { sec = Math.max(0, Math.round(sec)); return [Math.floor(sec / 3600), Math.floor(sec % 3600 / 60), sec % 60].map(x => String(x).padStart(2, "0")).join(":"); };
+// De aftelling rekent telkens opnieuw vanaf de klok (niet door af te tellen per tik), dus ze blijft juist
+// ook als de telefoon het scherm of de app een tijd in slaap legde. Bij terugkeer meteen bijwerken.
+document.addEventListener("visibilitychange", () => { if (!document.hidden && $("pauze").classList.contains("aan")) tikPauze(); });
 function tikPauze() {
+  if (!$("pauze").classList.contains("aan")) { clearInterval(window._pt); return; }
   const row = OMLOOP.ritten[RITI]; const v = _toMin(row[4]);
   // We tellen 1,5 min (90 s) vroeger af: de rit start automatisch 1,5 min vóór het vertrekuur, dus de
   // pauzeklok loopt op dat moment naar 0 (niet pas op het vertrekuur zelf).
   const secLeft = (v - nu()) * 60 - 90;
-  $("pauzeKlok").textContent = secLeft > 0 ? klokHHMMSS(secLeft) : "00:00:00";
-  if (secLeft <= 0) { clearInterval(window._pt); startRijden(); }
+  $("pauzeKlok").textContent = _hhmmss(secLeft);
+  const totaal = (v - nu()) * 60 - 90 + (Date.now() - _pauzeBegin) / 1000;
+  $("pauzeBalk").style.width = (totaal > 0 ? Math.min(100, Math.max(0, 100 * (1 - secLeft / totaal))) : 100).toFixed(1) + "%";
+  if (secLeft <= 0) { clearInterval(window._pt); try { localStorage.removeItem(_pauzeSleutel); } catch {} startRijden(); }
 }
 
 /* ===== rijscherm ===== */
@@ -1362,8 +1417,9 @@ function startSnap() {
 }
 function startRijden() {
   clearInterval(window._pt);
+  if (_pauzeSleutel) { try { localStorage.removeItem(_pauzeSleutel); } catch {} _pauzeSleutel = ""; }
   _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0 };   // meting voor de ritscore resetten
-  toon("rij");
+  toon("rij"); updMeldingen();
   tekenLijst();
   vulVolgStrip();
   _scrollPauzeTot = 0;
@@ -1737,7 +1793,8 @@ function startGps() {
   watchId = navigator.geolocation.watchPosition(pos => {
     if (!RIT) return;
     const vorige = laatstePos;
-    laatstePos = [pos.coords.latitude, pos.coords.longitude]; _gpsGeweigerd = false;
+    laatstePos = [pos.coords.latitude, pos.coords.longitude];
+    if (_gpsGeweigerd || _gpsWeg) { _gpsGeweigerd = false; _gpsWeg = false; updMeldingen(); }
     // Snelheid: liefst rechtstreeks van de GPS (m/s), anders geschat uit de verplaatsing sinds de vorige fix.
     // Licht afgevlakt zodat het cijfer niet springt.
     let _kmu = null;
@@ -1767,12 +1824,30 @@ function startGps() {
     laatsteSnap = sn; // echte GPS heeft altijd voorrang op een handmatig gekozen halte
   }, err => {
     // Geen fix: we tonen 'wacht op positie'. Weigerde de chauffeur de locatie, dan zeggen we dat.
-    if (err && err.code === 1) {
-      if (!_gpsGeweigerd) toast("Geen toegang tot je locatie. Sta locatie toe voor deze site in de instellingen van je browser, anders kan de boordcomputer je niet volgen.", 12000);
-      _gpsGeweigerd = true; render();
-    }
+    // Dat tonen we met een duidelijke rode melding bovenaan, met een knop om het op te lossen.
+    if (err && err.code === 1) { _gpsGeweigerd = true; updMeldingen(); render(); }
+    else if (err && err.code === 2) { _gpsWeg = true; updMeldingen(); }
   }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 12000 });
 }
+let _gpsWeg = false; // toestel meldt dat er geen locatie te bepalen valt (GPS uit, binnen, …)
+function updMeldingen() {
+  $("meldOffline").classList.toggle("aan", navigator.onLine === false);
+  const gps = !simAan && (_gpsGeweigerd || _gpsWeg || !navigator.geolocation);
+  $("meldGps").classList.toggle("aan", gps);
+  $("meldGpsTxt").textContent = !navigator.geolocation ? "Dit toestel of deze browser kan geen locatie geven. Gebruik een telefoon met GPS."
+    : _gpsGeweigerd ? "Geef toegang tot je locatie om de rit en haltes automatisch te volgen."
+    : "Je toestel vindt geen locatie. Zet locatie (GPS) aan in de instellingen van je telefoon.";
+}
+window.addEventListener("online", updMeldingen);
+window.addEventListener("offline", updMeldingen);
+$("meldGpsKnop").onclick = async () => {
+  // Opnieuw vragen. Weigerde de chauffeur eerder definitief, dan vraagt de browser niets meer en leggen we uit waar het moet.
+  let st = "";
+  try { st = (await navigator.permissions.query({ name: "geolocation" })).state; } catch {}
+  if (st === "denied") toast("Locatie staat geblokkeerd. Tik op het slotje of ⓘ naast het adres (of ga naar Instellingen › Apps › je browser › Locatie) en kies Toestaan. Herlaad daarna de pagina.", 15000);
+  else toast("Even geduld, je toestel vraagt nu om locatietoegang…", 5000);
+  _gpsWeg = false; startGps(); updMeldingen();
+};
 function stopGps() { if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch {} watchId = null; } _snelheid = null; _vorigeT = 0; stopPosDelen(); }
 
 // Live positie delen (eigen net): tijdens het rijden sturen we de GPS-positie naar de server, zodat de
