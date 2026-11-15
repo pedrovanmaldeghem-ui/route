@@ -113,6 +113,21 @@ body.donker .goed{color:#b6f0bd}
 #rij.donker .smeld.rood{background:#3a1717; color:var(--tekst); border-color:#6b2a2a}
 #rij.donker .smeld.rood b,#rij.donker .smeld.rood > .ic{color:#ff8a80}
 #rij.donker .smeld .knop{background:transparent; color:#6ab0e0; border-color:#6ab0e0}
+/* Flitspalen (OpenStreetMap): melding bij het naderen + icoontjes op de kaart. */
+.smeld.flits{background:#fff3cd; color:#15181d; border-color:#f0c36d; align-items:center}
+.smeld.flits > .ic{color:#b45309}
+.smeld.flits .fmax{margin-left:auto; flex:none; width:46px; height:46px; border-radius:50%; border:5px solid #d32f2f; background:#fff; color:#111;
+  display:flex; align-items:center; justify-content:center; font:800 17px/1 system-ui}
+.smeld.flits .fmax:empty{display:none}
+#rij.donker .smeld.flits{background:#3a2e10; color:var(--tekst); border-color:#7a5c16}
+#rij.donker .smeld.flits > .ic{color:#fbbf24}
+.fpmk{background:none; border:0}
+.fpmk div{width:26px; height:26px; border-radius:7px; background:#1f2937; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.45);
+  display:flex; align-items:center; justify-content:center; color:#fff}
+.fpmk div.r{background:#b91c1c}
+.fpmk div.tc{background:#1d4ed8; font:800 10px/1 system-ui}
+.fpmk svg{width:16px; height:16px; fill:currentColor}
+.fpbron{font-size:12px; opacity:.7; margin:-4px 4px 8px 44px}
 #tp{display:flex; align-items:center; gap:12px; background:#fff; color:#111; padding:9px 14px; font-weight:700; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
 #tp::before{content:""; position:absolute; left:-9px; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #9aa4b2}
 #tp .tpt{font-size:20px; flex:none; min-width:60px; font-variant-numeric:tabular-nums} #tp .tpn{font-size:20px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -491,6 +506,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
   </div>
   <div id="meldingen">
+    <div class="smeld flits" id="meldFlits"><i data-ic="waarschuw"></i><div><b id="meldFlitsT">Flitspaal</b><span id="meldFlitsS"></span></div><span class="fmax" id="meldFlitsMax"></span></div>
     <div class="smeld grijs" id="meldOffline"><i data-ic="offline"></i><div><b>Offline modus</b>Je bent tijdelijk zonder internet. Dienstregeling en route blijven beschikbaar.</div></div>
     <div class="smeld rood" id="meldGps"><i data-ic="waarschuw"></i><div><b>Locatie (GPS) niet beschikbaar</b><span id="meldGpsTxt">Geef toegang tot je locatie om de rit en haltes automatisch te volgen.</span><br><button class="knop" id="meldGpsKnop"><i data-ic="halte"></i>Locatietoegang instellen</button></div></div>
   </div>
@@ -529,6 +545,8 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
       <button class="knop" id="menuOverzicht"><i data-ic="wissel"></i>Rit wisselen</button>
       <button class="knop" id="menuThema"><i data-ic="instel"></i><span>Donkere modus</span></button>
       <label class="dimrij"><span>Kaart</span><select id="kaartStijl" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="osm">Gedetailleerd</option><option value="rustig">Rustig (gedempte kleuren)</option><option value="grijs">Eenvoudig (lichtgrijs)</option></select></label>
+      <label class="dimrij"><span>Flitspalen</span><select id="flitsKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="aan">Tonen en waarschuwen</option><option value="kaart">Enkel op de kaart</option><option value="uit">Uit</option></select></label>
+      <p class="fpbron">Vaste flitspalen en trajectcontroles: © OpenStreetMap-bijdragers. Mobiele controles staan er niet in.</p>
       <label class="dimrij" id="dimRij"><span>Helderheid</span><i title="donkerder">−</i><input type="range" id="dimBalk" min="-50" max="50" step="5" value="0"><i title="lichter">+</i><b id="dimWaarde">0</b></label>
       <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
       <button class="knop" id="menuMelden"><i data-ic="bericht"></i>Probleem of suggestie melden</button>
@@ -1475,7 +1493,7 @@ function startRijden() {
   // anders blijft de live-bol aan de weggegooide kaart hangen en zie je hem niet meer na een ritwissel.
   const kaartOpen = $("kaart").style.display === "block";
   if (kaart) { try { kaart.remove(); } catch {} }
-  kaart = laag = marker = gedaanLaag = null;
+  kaart = laag = marker = gedaanLaag = null; _flitsLaag = null; _flitsMid = null;
   // Een pas geselecteerde rit start bij de eerste halte. De bol toont je echte GPS-locatie zodra er
   // een fix is; sta je nog ver van de route, dan blijft de schema-positie op halte 1 staan.
   laatsteSnap = startSnap();
@@ -1663,6 +1681,7 @@ function render() {
   if (!OMLOOP || !RIT) return;
   $("rij").classList.toggle("geenhaltes", !!(OMLOOP.vrij && OMLOOP.geenHaltes && !_legeModus));
   werkSnelmeterBij();
+  flitsCheck();
   const row = OMLOOP.ritten[RITI];
   if (_legeModus) { $("blijn").textContent = "leeg"; $("blijn").style.background = "#667"; $("blijn").style.color = "#fff"; $("bintern").textContent = "↳"; $("bintern").style.display = ""; }
   else { $("blijn").textContent = row[1]; $("blijn").style.background = lijnKleur(row[1]); $("blijn").style.color = lijnTekst(row[1]); $("bintern").style.display = "none"; }
@@ -2465,6 +2484,98 @@ $("scoreSluit").onclick = () => { clearTimeout(window._scoreT); $("scoreov").cla
 $("omlov").addEventListener("click", e => { if (e.target === $("omlov")) $("omlov").classList.remove("aan"); });
 $("pauzeStart").onclick = () => startRijden();
 $("pauzeMenu").onclick = () => menuOpen("rit");
+
+/* ===== flitspalen ===== */
+// Vaste flitspalen, roodlichtcamera's en trajectcontroles uit OpenStreetMap (© OSM-bijdragers, ODbL),
+// dagelijks bijgewerkt in /gtfs/flitspalen.json. Mobiele controles staan er niet in.
+// Op de kaart tonen we enkel wat binnen ~6 km ligt (licht voor de telefoon). Een melding verschijnt
+// als je er binnen 400 m naartoe rijdt (afstand neemt af en hij ligt ongeveer voor je), en verdwijnt
+// zodra je voorbij bent. In een trajectcontrole blijft de melding staan tot aan het einde.
+let FLITS = null, _flitsBezig = false, _flitsLaag = null, _flitsMid = null;
+let _flitsKeuze = "aan";
+try { _flitsKeuze = localStorage.getItem("lk-boord-flits") || "aan"; } catch {}
+const _flitsVorig = new Map(); // id -> vorige afstand
+let _flitsTC = null;            // actieve trajectcontrole {tc, start}
+const FLITS_SVG = `<svg viewBox="0 0 24 24"><path d="M9 4 7.2 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.2L15 4zm3 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>`;
+async function laadFlits() {
+  if (FLITS || _flitsBezig) return; _flitsBezig = true;
+  try {
+    const d = await haal("/gtfs/flitspalen.json");
+    FLITS = { p: (d.p || []).map((x, i) => ({ id: "p" + i, lat: x[0], lon: x[1], max: x[2] || 0, rood: x[3] === "r", richt: x[4] ?? null })),
+              tc: (d.tc || []).map((x, i) => ({ id: "t" + i, van: x[0], tot: x[1], max: x[2] || 0, naam: x[3] || "Trajectcontrole" })) };
+  } catch { FLITS = { p: [], tc: [] }; }
+  _flitsBezig = false;
+}
+function flitsPos() {
+  const s = laatsteSnap;
+  if (s && s.mLat != null) return [s.mLat, s.mLon];
+  if (simAan && s && s.lat != null) return [s.lat, s.lon];
+  return laatstePos || null;
+}
+function flitsIcoon(kl, inh) { return L.divIcon({ className: "fpmk", iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="${kl}">${inh}</div>` }); }
+function tekenFlits(pos) {
+  if (!kaart) return;
+  if (_flitsKeuze === "uit") { if (_flitsLaag) { kaart.removeLayer(_flitsLaag); _flitsLaag = null; } return; }
+  if (_flitsLaag && _flitsMid && meter(_flitsMid, pos) < 1500) return;
+  if (_flitsLaag) kaart.removeLayer(_flitsLaag);
+  _flitsLaag = L.layerGroup(); _flitsMid = pos;
+  for (const c of FLITS.p) if (meter(pos, [c.lat, c.lon]) < 6000)
+    _flitsLaag.addLayer(L.marker([c.lat, c.lon], { icon: flitsIcoon(c.rood ? "r" : "", FLITS_SVG), interactive: false, keyboard: false }));
+  for (const t of FLITS.tc) for (const [pt, lbl] of [[t.van, "TC"], [t.tot, "■"]]) if (meter(pos, pt) < 6000)
+    _flitsLaag.addLayer(L.marker(pt, { icon: flitsIcoon("tc", lbl), interactive: false, keyboard: false }));
+  _flitsLaag.addTo(kaart);
+}
+function hoekVerschil(a, b) { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
+function toonFlitsMelding(titel, sub, max) {
+  const m = $("meldFlits"); const aan = !!titel;
+  if (aan) { $("meldFlitsT").textContent = titel; $("meldFlitsS").textContent = sub ? " " + sub : ""; $("meldFlitsMax").textContent = max ? String(max) : ""; }
+  m.classList.toggle("aan", aan);
+}
+function flitsCheck() {
+  if (_flitsKeuze === "uit") { toonFlitsMelding(null); if (_flitsLaag && kaart) { kaart.removeLayer(_flitsLaag); _flitsLaag = null; } return; }
+  if (!FLITS) { laadFlits(); return; }
+  const pos = flitsPos(); if (!pos) { toonFlitsMelding(null); return; }
+  tekenFlits(pos);
+  if (_flitsKeuze !== "aan") { toonFlitsMelding(null); return; }
+  const voor = (pt) => _bewHoek == null || hoekVerschil(koers(pos, pt), _bewHoek) < 50;
+  // 1) Lopende trajectcontrole: tot vlak bij het einde (of duidelijk ervan weg).
+  if (_flitsTC) {
+    const t = _flitsTC.tc, dEind = meter(pos, t.tot), lengte = meter(t.van, t.tot);
+    if (dEind < 60 || dEind > lengte + 3000) _flitsTC = null;
+    else { toonFlitsMelding("Trajectcontrole", (t.max ? "Max. " + t.max + " km/u · " : "") + "nog " + kmTekst(dEind), t.max); return; }
+  }
+  // 2) Dichtstbijzijnde flitspaal of begin van een trajectcontrole voor je, binnen 400 m en naderend.
+  let best = null;
+  const kijk = (id, pt, soort, obj) => {
+    const d = meter(pos, pt); const v = _flitsVorig.get(id); _flitsVorig.set(id, d);
+    if (d > 400) { if (d > 2000) _flitsVorig.delete(id); return; }
+    if (soort === "tc" && d < 40) { _flitsTC = { tc: obj }; return; }
+    const nadert = v == null ? true : d < v + 2;
+    if (nadert && (d < 30 || voor(pt)) && (!best || d < best.d)) best = { d, soort, obj };
+  };
+  // Kent OSM de kijkrichting en wijkt de as daarvan duidelijk af van je rijrichting, dan hangt de paal aan
+  // een andere weg (bv. een snelweg waar je onderdoor rijdt): geen melding. Vooruit of achteruit kijken
+  // maakt niet uit, enkel de as van de weg telt.
+  const andereWeg = c => c.richt != null && _bewHoek != null && (x => Math.min(x, 180 - x) > 35)(hoekVerschil(c.richt, _bewHoek));
+  for (const c of FLITS.p) if (Math.abs(c.lat - pos[0]) < 0.01 && Math.abs(c.lon - pos[1]) < 0.015 && !andereWeg(c)) kijk(c.id, [c.lat, c.lon], "p", c);
+  // Trajectcontrole enkel in de rijrichting ervan (de tegenrichting heeft meestal een eigen controle die
+  // net aan dit einde begint).
+  for (const t of FLITS.tc) if (Math.abs(t.van[0] - pos[0]) < 0.01 && Math.abs(t.van[1] - pos[1]) < 0.015
+    && (_bewHoek == null || hoekVerschil(koers(t.van, t.tot), _bewHoek) < 70)) kijk(t.id, t.van, "tc", t);
+  if (_flitsTC) { const t = _flitsTC.tc; toonFlitsMelding("Trajectcontrole", (t.max ? "Max. " + t.max + " km/u · " : "") + "nog " + kmTekst(meter(pos, t.tot)), t.max); return; }
+  if (!best) { toonFlitsMelding(null); return; }
+  const o = best.obj, afst = best.d < 30 ? "nu" : "over " + Math.round(best.d / 10) * 10 + " m";
+  if (best.soort === "tc") toonFlitsMelding("Trajectcontrole " + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
+  else toonFlitsMelding((o.rood ? "Roodlicht-/flitscamera " : "Flitspaal ") + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
+}
+const kmTekst = m => m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
+$("flitsKeuze").value = _flitsKeuze;
+$("flitsKeuze").onchange = () => {
+  _flitsKeuze = $("flitsKeuze").value;
+  try { localStorage.setItem("lk-boord-flits", _flitsKeuze); } catch {}
+  _flitsMid = null; if (_flitsLaag && kaart) { kaart.removeLayer(_flitsLaag); _flitsLaag = null; }
+  flitsCheck();
+};
 
 /* ===== donkere modus ===== */
 let donker = false;
