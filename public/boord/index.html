@@ -2211,22 +2211,30 @@ function volgZoom(dt) {
   }
   return Math.max(12, Math.min(19, _zoomAuto + _zoomExtra));
 }
-function nieuwVolgDoel(lat, lon, hoek) {
+// s = afstand langs de route (of null buiten de route). Met s glijdt de bol LANGS de routelijn (ook door
+// bochten), zonder s in een rechte lijn tussen twee GPS-posities.
+function volgSegment(lat1, lon1, s1, t0, dur) {
+  const langsRoute = s1 != null && _volgNu.s != null && Math.abs(s1 - _volgNu.s) < 250;
+  return { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1, lon1, t0, dur,
+    s0: langsRoute ? _volgNu.s : null, s1: langsRoute ? s1 : null };
+}
+function nieuwVolgDoel(lat, lon, hoek, s) {
   const nu = performance.now();
+  if (s == null) s = null;
   const veranderd = !_volgDoel || meter([_volgDoel.lat, _volgDoel.lon], [lat, lon]) > 0.5;
-  _volgDoel = { lat, lon, hoek };
-  if (!_volgNu) { _volgNu = { lat, lon, hoek }; _volgSeg = null; _volgLaatsteFix = nu; return; }
+  _volgDoel = { lat, lon, hoek, s };
+  if (!_volgNu) { _volgNu = { lat, lon, hoek, s }; _volgSeg = null; _volgLaatsteFix = nu; return; }
   if (!veranderd) {
     // Zelfde positie (je staat stil): stond de bol door het doorrijden net vóór je, glijd dan terug.
     if (!_volgSeg && meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 0.5)
-      _volgSeg = { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1: lat, lon1: lon, t0: nu, dur: 600 };
+      _volgSeg = volgSegment(lat, lon, s, nu, 600);
     return;
   }
   const dur = Math.max(400, Math.min(2000, _volgLaatsteFix ? nu - _volgLaatsteFix : 1000));
   _volgLaatsteFix = nu;
   // Grote sprong (GPS-sprong, ritwissel, eerste fix na lang wachten): niet over de kaart laten glijden.
-  if (meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 250) { _volgNu.lat = lat; _volgNu.lon = lon; _volgSeg = null; return; }
-  _volgSeg = { lat0: _volgNu.lat, lon0: _volgNu.lon, lat1: lat, lon1: lon, t0: nu, dur };
+  if (meter([_volgNu.lat, _volgNu.lon], [lat, lon]) > 250) { _volgNu.lat = lat; _volgNu.lon = lon; _volgNu.s = s; _volgSeg = null; return; }
+  _volgSeg = volgSegment(lat, lon, s, nu, dur);
 }
 let _volgBezig = false, _volgZoomVeranderd = false, _volgLaatsteEinde = 0;
 function volgVerplaats(centrum, z, tnu) {
@@ -2253,10 +2261,21 @@ function startVolgAnim() {
     const dt = Math.min(100, Math.max(0, tnu - _volgFrameT)); _volgFrameT = tnu;
     let rijdt = false;
     if (_volgSeg) {
-      const f = Math.min(1.15, (tnu - _volgSeg.t0) / _volgSeg.dur);
-      _volgNu.lat = _volgSeg.lat0 + (_volgSeg.lat1 - _volgSeg.lat0) * f;
-      _volgNu.lon = _volgSeg.lon0 + (_volgSeg.lon1 - _volgSeg.lon0) * f;
-      if (f >= 1.15) _volgSeg = null; else rijdt = true;
+      const sg = _volgSeg;
+      if (sg.s0 != null) {
+        // Langs de route: tot 15% doorrijden (geen stilstand tussen twee GPS-posities), maar altijd óp de lijn.
+        const f = Math.min(1.15, (tnu - sg.t0) / sg.dur);
+        const s = Math.max(0, sg.s0 + (sg.s1 - sg.s0) * f), p = puntOpS(s);
+        _volgNu.lat = p[0]; _volgNu.lon = p[1]; _volgNu.s = s;
+        if (f >= 1.15) _volgSeg = null; else rijdt = true;
+      } else {
+        // Buiten de route: niet voorbij de echte positie schieten (zou naast de weg belanden).
+        const f = Math.min(1, (tnu - sg.t0) / sg.dur);
+        _volgNu.lat = sg.lat0 + (sg.lat1 - sg.lat0) * f;
+        _volgNu.lon = sg.lon0 + (sg.lon1 - sg.lon0) * f;
+        _volgNu.s = null;
+        if (f >= 1) { _volgNu.s = _volgDoel ? _volgDoel.s : null; _volgSeg = null; } else rijdt = true;
+      }
     }
     const ah = 1 - Math.exp(-dt / 350); // draaien: ±350 ms tijdconstante
     _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, ah);
@@ -2302,10 +2321,16 @@ function richtHoek(s0) {
   if (eind[0] === pA[0] && eind[1] === pA[1]) return null;
   return koers(pA, eind);
 }
+const BOL_OP_ROUTE = 35; // m
 function zetMarker() {
   if (!laatsteSnap) return;
-  // De bol staat op je echte locatie (mLat/mLon). Val terug op de gesnapte positie, dan op de positie langs s.
-  let lat = laatsteSnap.mLat, lon = laatsteSnap.mLon;
+  // Rij je op de route (GPS binnen BOL_OP_ROUTE m van de lijn), dan staat de bol óp de routelijn, op je
+  // positie langs de route: GPS schommelt een paar meter en anders zweeft de bol naast de weg. Wijk je
+  // echt af (omleiding, nog op weg naar de start), dan staat hij op je echte locatie (mLat/mLon).
+  let lat = laatsteSnap.mLat, lon = laatsteSnap.mLon, sBol = null;
+  const opRoute = !RIT.enkelDoel && !laatsteSnap.offRoute && RIT.pts && RIT.pts.length > 1 && laatsteSnap.s != null
+    && (laatsteSnap.afstand == null || laatsteSnap.afstand <= BOL_OP_ROUTE);
+  if (opRoute) { const pt = puntOpS(laatsteSnap.s); lat = pt[0]; lon = pt[1]; sBol = laatsteSnap.s; }
   if (lat == null) { lat = laatsteSnap.lat; lon = laatsteSnap.lon; }
   if (lat == null) { const pt = puntOpS(laatsteSnap.s); lat = pt[0]; lon = pt[1]; }
   if (!marker) {
@@ -2328,7 +2353,7 @@ function zetMarker() {
     if (el) { const w = el.querySelector(".bm"); if (w) w.style.setProperty("--h", "0deg"); } // kaart draait, kegel recht omhoog
     // Doel voor de vloeiende volg-animatie: de echte positie + rijrichting. De animatielus schuift en
     // draait de kaart daar geleidelijk naartoe (zie startVolgAnim), i.p.v. in één sprong per GPS-prik.
-    nieuwVolgDoel(lat, lon, hoek);
+    nieuwVolgDoel(lat, lon, hoek, sBol);
     startVolgAnim();
   } else {
     // Vrije modus: de kaart draait niet automatisch mee, dus laat de kegel zelf de echte rijrichting wijzen.
