@@ -151,6 +151,9 @@ body.donker .goed{color:#b6f0bd}
 #volgstrip .vs-n{color:#5a626e; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #volgstrip .vs-volg .vs-n{color:#15181d; font-weight:600}
 #volgstrip .vs-pauze{color:#1565c0; font-weight:700; flex:none; white-space:nowrap}
+#volgstrip .vs-wrap{display:flex; align-items:center; gap:14px}
+#volgstrip .vs-links{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
+#volgstrip .vs-buf{flex:none; align-self:stretch; display:flex; align-items:center; padding-left:16px; border-left:1px solid #d0d5dd; color:#1565c0; font-weight:700; font-size:20px; white-space:nowrap}
 #volgstrip .vs-lijnbadge{display:inline-block; padding:0 9px; border-radius:7px; font-weight:800; line-height:1.4; vertical-align:middle}
 #volgstrip .vs-leegbadge{display:inline-block; padding:0 9px; border-radius:7px; font-weight:800; line-height:1.4; vertical-align:middle; background:#667; color:#fff}
 /* Korte melding onderaan (bv. einde rit / eindhalte niet bereikt). */
@@ -201,7 +204,8 @@ body.donker #routewaar{background:#8b1d14}
 #rij.donker #volgstrip{background:var(--paneel); color:var(--tekst); border-top-color:var(--lijn)}
 #rij.donker #volgstrip .vs-n{color:var(--muted)}
 #rij.donker #volgstrip .vs-volg .vs-n{color:var(--tekst)}
-#rij.donker #volgstrip .vs-pauze{color:#4da3ff}
+#rij.donker #volgstrip .vs-pauze,#rij.donker #volgstrip .vs-buf{color:#4da3ff}
+#rij.donker #volgstrip .vs-buf{border-left-color:var(--lijn)}
 /* 'Op tijd' (wit) wordt in donkere modus een donkere neutrale balk i.p.v. een felwitte flits. */
 #rij.donker #kop.wit{background:#1b2027; color:#f2f4f7}
 #rij.donker #kop.wit .balk{background:rgba(255,255,255,.3)}
@@ -1472,6 +1476,7 @@ function vulVolgStrip() {
   }
   const row = OMLOOP.ritten[RITI], vol = OMLOOP.ritten[RITI + 1];
   // Regel 1: aankomsttijd + eindhalte van deze rit (zonder het woord 'aankomst').
+  let buf = "";
   let h = `<div class="vs-rij"><span class="vs-t">${esc(RIT.aankomst || row[5] || "--:--")}</span><span class="vs-n">${esc(RIT.naar || row[3] || "")}</span></div>`;
   if (vol) {
     const leeg = legeRitTussen(row, vol);
@@ -1482,14 +1487,15 @@ function vulVolgStrip() {
     } else {
       const p = _toMin(vol[4]) - _toMin(row[5]);
       // Buffer tussen deze en de volgende rit; vaste tekst (flex:none) zodat ze zichtbaar blijft.
-      const pt = (p != null && p >= 0 && p < 600) ? `<span class="vs-pauze">${p} min buffer</span>` : "";
+      // Rechts naast beide regels, verticaal gecentreerd en gescheiden door een dun lijntje.
+      buf = (p != null && p >= 0 && p < 600) ? `<div class="vs-buf">${p} min buffer</div>` : "";
       const badge = `<span class="vs-lijnbadge" style="background:${lijnKleur(vol[1])};color:${lijnTekst(vol[1])}">${esc(vol[1])}</span>`;
-      h += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(vol[4] || "--:--")}</span><span class="vs-n">${badge} ${esc(vol[2] || "")}</span>${pt}</div>`;
+      h += `<div class="vs-rij vs-volg"><span class="vs-t">${esc(vol[4] || "--:--")}</span><span class="vs-n">${badge} ${esc(vol[2] || "")}</span></div>`;
     }
   } else {
     h += `<div class="vs-rij"><span class="vs-n" style="opacity:.75">Laatste rit van de omloop</span></div>`;
   }
-  strip.innerHTML = h;
+  strip.innerHTML = buf ? `<div class="vs-wrap"><div class="vs-links">${h}</div>${buf}</div>` : h;
 }
 // Laat de haltelijst meeschuiven: de net-gepasseerde/huidige halte bovenaan, de komende haltes eronder.
 // Scrolt de chauffeur zelf, dan houden we 8 s op met automatisch schuiven (_scrollPauzeTot).
