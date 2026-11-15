@@ -119,6 +119,16 @@ body.donker .goed{color:#b6f0bd}
 .smeld.flits .fmax{margin-left:auto; flex:none; width:46px; height:46px; border-radius:50%; border:5px solid #d32f2f; background:#fff; color:#111;
   display:flex; align-items:center; justify-content:center; font:800 17px/1 system-ui}
 .smeld.flits .fmax:empty{display:none}
+.smeld.flits .fwrap{flex:1; min-width:0}
+.tcbalk{display:none; position:relative; height:10px; margin:8px 0 4px; border-radius:5px; background:rgba(0,0,0,.12); overflow:hidden}
+.tcbalk i{position:absolute; left:0; top:0; bottom:0; width:0; background:#1d4ed8; border-radius:5px; transition:width .5s}
+.tcinfo{display:none; font-size:15px}
+.tcinfo b{display:inline; font-size:20px}
+.tcinfo .te{color:#c62828}
+.smeld.flits.tc .tcbalk,.smeld.flits.tc .tcinfo{display:block}
+#rij.donker .tcbalk{background:rgba(255,255,255,.18)}
+#rij.donker .tcbalk i{background:#60a5fa}
+#rij.donker .tcinfo .te{color:#ff8a80}
 #rij.donker .smeld.flits{background:#3a2e10; color:var(--tekst); border-color:#7a5c16}
 #rij.donker .smeld.flits > .ic{color:#fbbf24}
 .fpmk{background:none; border:0}
@@ -506,7 +516,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div class="balk" id="balk"><div class="vul" id="balkvul" style="width:0%"></div><div class="eind" id="balkeind" style="left:100%"></div><div class="knop-pos" id="balkpos" style="left:0%"></div></div>
   </div>
   <div id="meldingen">
-    <div class="smeld flits" id="meldFlits"><i data-ic="waarschuw"></i><div><b id="meldFlitsT">Flitspaal</b><span id="meldFlitsS"></span></div><span class="fmax" id="meldFlitsMax"></span></div>
+    <div class="smeld flits" id="meldFlits"><i data-ic="waarschuw"></i><div class="fwrap"><b id="meldFlitsT">Flitspaal</b><span id="meldFlitsS"></span><div class="tcbalk" id="tcBalk"><i id="tcVul"></i></div><div class="tcinfo" id="tcInfo"></div></div><span class="fmax" id="meldFlitsMax"></span></div>
     <div class="smeld grijs" id="meldOffline"><i data-ic="offline"></i><div><b>Offline modus</b>Je bent tijdelijk zonder internet. Dienstregeling en route blijven beschikbaar.</div></div>
     <div class="smeld rood" id="meldGps"><i data-ic="waarschuw"></i><div><b>Locatie (GPS) niet beschikbaar</b><span id="meldGpsTxt">Geef toegang tot je locatie om de rit en haltes automatisch te volgen.</span><br><button class="knop" id="meldGpsKnop"><i data-ic="halte"></i>Locatietoegang instellen</button></div></div>
   </div>
@@ -2495,7 +2505,8 @@ let FLITS = null, _flitsBezig = false, _flitsLaag = null, _flitsMid = null;
 let _flitsKeuze = "aan";
 try { _flitsKeuze = localStorage.getItem("lk-boord-flits") || "aan"; } catch {}
 const _flitsVorig = new Map(); // id -> vorige afstand
-let _flitsTC = null;            // actieve trajectcontrole {tc, start}
+let _flitsTC = null;            // actieve trajectcontrole {tc, t0, afg (m), last}
+let _tcEinde = null;            // na het einde nog even de gemiddelde snelheid tonen {gem, max, tot}
 const FLITS_SVG = `<svg viewBox="0 0 24 24"><path d="M9 4 7.2 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.2L15 4zm3 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>`;
 async function laadFlits() {
   if (FLITS || _flitsBezig) return; _flitsBezig = true;
@@ -2526,8 +2537,15 @@ function tekenFlits(pos) {
   _flitsLaag.addTo(kaart);
 }
 function hoekVerschil(a, b) { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
-function toonFlitsMelding(titel, sub, max) {
+function toonFlitsMelding(titel, sub, max, tc) {
   const m = $("meldFlits"); const aan = !!titel;
+  m.classList.toggle("tc", !!tc);
+  if (tc) {
+    $("tcVul").style.width = Math.round(Math.max(0, Math.min(1, tc.deel)) * 100) + "%";
+    const te = tc.max && tc.gem != null && tc.gem > tc.max;
+    $("tcInfo").innerHTML = (tc.gem != null ? `Gemiddeld <b class="${te ? "te" : ""}">${tc.gem}</b> km/u` : "Gemiddeld –")
+      + (tc.rest != null ? ` · einde over ${kmTekst(tc.rest)}` : "");
+  }
   if (aan) { $("meldFlitsT").textContent = titel; $("meldFlitsS").textContent = sub ? " " + sub : ""; $("meldFlitsMax").textContent = max ? String(max) : ""; }
   m.classList.toggle("aan", aan);
 }
@@ -2541,15 +2559,23 @@ function flitsCheck() {
   // 1) Lopende trajectcontrole: tot vlak bij het einde (of duidelijk ervan weg).
   if (_flitsTC) {
     const t = _flitsTC.tc, dEind = meter(pos, t.tot), lengte = meter(t.van, t.tot);
-    if (dEind < 60 || dEind > lengte + 3000) _flitsTC = null;
-    else { toonFlitsMelding("Trajectcontrole", (t.max ? "Max. " + t.max + " km/u · " : "") + "nog " + kmTekst(dEind), t.max); return; }
+    const stap = meter(_flitsTC.last, pos); if (stap > 3) { _flitsTC.afg += stap; _flitsTC.last = pos; }
+    const sec = (Date.now() - _flitsTC.t0) / 1000;
+    const gem = (sec > 10 && _flitsTC.afg > 50) ? Math.round(_flitsTC.afg / sec * 3.6) : null;
+    if (dEind < 60) { _tcEinde = { gem, max: t.max, tot: Date.now() + 15000 }; _flitsTC = null; }
+    else if (dEind > lengte + 3000) _flitsTC = null;
+    else { toonTC(t, gem, dEind, _flitsTC.afg); return; }
+  }
+  if (_tcEinde) {
+    if (Date.now() < _tcEinde.tot) { toonFlitsMelding("Einde trajectcontrole", _tcEinde.max ? "Max. " + _tcEinde.max + " km/u" : "", _tcEinde.max, { deel: 1, gem: _tcEinde.gem, max: _tcEinde.max }); return; }
+    _tcEinde = null;
   }
   // 2) Dichtstbijzijnde flitspaal of begin van een trajectcontrole voor je, binnen 400 m en naderend.
   let best = null;
   const kijk = (id, pt, soort, obj) => {
     const d = meter(pos, pt); const v = _flitsVorig.get(id); _flitsVorig.set(id, d);
     if (d > 400) { if (d > 2000) _flitsVorig.delete(id); return; }
-    if (soort === "tc" && d < 40) { _flitsTC = { tc: obj }; return; }
+    if (soort === "tc" && d < 40) { _flitsTC = { tc: obj, t0: Date.now(), afg: d, last: pos }; return; }
     const nadert = v == null ? true : d < v + 2;
     if (nadert && (d < 30 || voor(pt)) && (!best || d < best.d)) best = { d, soort, obj };
   };
@@ -2562,11 +2588,15 @@ function flitsCheck() {
   // net aan dit einde begint).
   for (const t of FLITS.tc) if (Math.abs(t.van[0] - pos[0]) < 0.01 && Math.abs(t.van[1] - pos[1]) < 0.015
     && (_bewHoek == null || hoekVerschil(koers(t.van, t.tot), _bewHoek) < 70)) kijk(t.id, t.van, "tc", t);
-  if (_flitsTC) { const t = _flitsTC.tc; toonFlitsMelding("Trajectcontrole", (t.max ? "Max. " + t.max + " km/u · " : "") + "nog " + kmTekst(meter(pos, t.tot)), t.max); return; }
+  if (_flitsTC) { toonTC(_flitsTC.tc, null, meter(pos, _flitsTC.tc.tot), 0); return; }
   if (!best) { toonFlitsMelding(null); return; }
   const o = best.obj, afst = best.d < 30 ? "nu" : "over " + Math.round(best.d / 10) * 10 + " m";
   if (best.soort === "tc") toonFlitsMelding("Trajectcontrole " + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
   else toonFlitsMelding((o.rood ? "Roodlicht-/flitscamera " : "Flitspaal ") + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
+}
+// Balk = afgelegd deel (afgelegd / (afgelegd + rest in vogelvlucht)); gemiddelde = afgelegd / tijd sinds het begin.
+function toonTC(t, gem, rest, afg) {
+  toonFlitsMelding("Trajectcontrole", t.max ? "Max. " + t.max + " km/u" : "", t.max, { deel: afg / (afg + rest), gem, max: t.max, rest });
 }
 const kmTekst = m => m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
 $("flitsKeuze").value = _flitsKeuze;
