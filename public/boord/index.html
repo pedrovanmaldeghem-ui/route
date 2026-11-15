@@ -1522,7 +1522,7 @@ function startSnap() {
 function startRijden() {
   clearInterval(window._pt);
   if (_pauzeSleutel) { try { localStorage.removeItem(_pauzeSleutel); } catch {} _pauzeSleutel = ""; }
-  _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0 };   // meting voor de ritscore resetten
+  _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0, snelTot: 0, snelTe: 0, snelVeel: 0, snelMax: 0 };   // meting voor de ritscore resetten
   toon("rij"); updMeldingen();
   tekenLijst();
   vulVolgStrip();
@@ -1767,6 +1767,15 @@ function render() {
     if (_ritStat && !_legeModus) {
       _ritStat.tot++;
       if (laatsteSnap && laatsteSnap.offRoute) _ritStat.off++;
+      // Snelheid: elke tik (±1 s) waarin de limiet en je snelheid gekend zijn. Meer dan 3 km/u erboven
+      // telt als te snel, meer dan 10 km/u erboven als veel te snel (weegt dubbel).
+      const _lim = maxLimietVoor();
+      if (_lim != null && _snelheid != null && _snelheid > 5) {
+        _ritStat.snelTot++;
+        const over = Math.round(_snelheid) - _lim;
+        if (over > 10) _ritStat.snelVeel++; else if (over > 3) _ritStat.snelTe++;
+        if (over > _ritStat.snelMax) _ritStat.snelMax = over;
+      }
       if (fi > _ritStat.lastFi) { _ritStat.lastFi = fi; _ritStat.devs.push(dev); }
     }
     // Wit = binnen de aanvaardbare marge: minder dan 1 min te vroeg tot minder dan 5 min te laat.
@@ -1848,7 +1857,8 @@ let _eindBezig = false, _omloopKlaar = false;
 // Einde van een rit: ga naar de volgende rit (na 3 s), of meld bij de laatste rit dat de omloop klaar is.
 // `bereikt` = of de eindhalte effectief gehaald werd; zo niet, tonen we dat kort.
 // --- Ritscore ---------------------------------------------------------------
-// Op het einde van een rit: één score (0–100) uit de stiptheid per halte en de route-trouw.
+// Op het einde van een rit: één score (0–100) uit de stiptheid per halte, de route-trouw en (waar de
+// limiet gekend is) het respecteren van de maximumsnelheid.
 // Volledig in de boordcomputer; niets wordt weggeschreven.
 function berekenScore(st) {
   if (!st || st.devs.length < 2 || st.tot < 5) return null;   // te weinig data voor een eerlijke score
@@ -1860,18 +1870,23 @@ function berekenScore(st) {
   };
   const stipt = st.devs.reduce((a, d) => a + puntVoor(d), 0) / st.devs.length;
   const route = st.tot > 0 ? (100 * (st.tot - st.off) / st.tot) : 100;
-  const totaal = Math.round(stipt * 0.75 + route * 0.25);     // stiptheid is hoofdgewicht
+  // Snelheid: aandeel van de rijtijd binnen de limiet (+3 km/u marge); veel te snel (> +10) telt dubbel.
+  // Zonder snelheidsgegevens (geen limieten op deze route) valt dit deel weg.
+  const metSnel = (st.snelTot || 0) >= 30;
+  const snel = metSnel ? Math.max(0, 100 * (1 - 3 * (st.snelTe + 2 * st.snelVeel) / st.snelTot)) : null;
+  const totaal = Math.round(metSnel ? stipt * 0.6 + route * 0.2 + snel * 0.2 : stipt * 0.75 + route * 0.25);
   const sterren = Math.max(1, Math.min(5, Math.round(totaal / 20)));
   const teVroeg = st.devs.filter(d => d < -1).length;
   const teLaat = st.devs.filter(d => d >= 5).length;
   let fb;
   if (route < 80) fb = "Je week vaak van de route af.";
+  else if (metSnel && snel < 80) fb = "Je reed regelmatig te snel" + (st.snelMax > 3 ? ` (tot ${st.snelMax} km/u boven de limiet).` : ".");
   else if (teVroeg > st.devs.length / 3) fb = "Vaak te vroeg — iets trager rijden.";
   else if (teLaat > st.devs.length / 3) fb = "Vaak te laat — probeer bij te blijven.";
   else if (totaal >= 90) fb = "Mooi op tijd gereden!";
   else if (totaal >= 75) fb = "Nette rit.";
   else fb = "Kan strakker op het schema.";
-  return { totaal, sterren, stipt: Math.round(stipt), route: Math.round(route), fb };
+  return { totaal, sterren, stipt: Math.round(stipt), route: Math.round(route), snel: snel == null ? null : Math.round(snel), fb };
 }
 function toonRitscore(res, laatste) {
   if (!res) return;
@@ -1882,7 +1897,7 @@ function toonRitscore(res, laatste) {
     `<div class="score-groot ${kl}"><span class="sterren">${"★".repeat(res.sterren)}${"☆".repeat(5 - res.sterren)}</span>`
     + `<span class="getal">${res.totaal}<small>/100</small></span></div>`
     + `<div class="score-fb">${esc(res.fb)}</div>`
-    + `<div class="score-detail">Stiptheid ${res.stipt}% · Route ${res.route}%</div>`;
+    + `<div class="score-detail">Stiptheid ${res.stipt}% · Route ${res.route}%${res.snel != null ? ` · Snelheid ${res.snel}%` : ""}</div>`;
   $("scoreov").classList.add("aan");
   clearTimeout(window._scoreT); window._scoreT = setTimeout(() => $("scoreov").classList.remove("aan"), 12000);
 }
