@@ -207,6 +207,15 @@ body.donker #routewaar{background:#8b1d14}
 .balk.offroute{background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.28) 0 5px, rgba(255,255,255,.3) 5px 10px)}
 /* ---------- Donkere modus (nachtrijden) ---------- */
 /* Extra verdonkering in donkere modus: een zwarte laag over alles, kliks gaan er gewoon door. */
+/* Flitspaal in aantocht: oranje rand rond het hele scherm die een paar keer pulseert; rijd je te snel,
+   dan blijft een rode rand knipperen tot je onder de limiet zit of voorbij bent. */
+#flitsrand{position:fixed; inset:0; pointer-events:none; z-index:4900; border:14px solid #f59e0b; border-radius:6px; opacity:0;
+  box-shadow:inset 0 0 40px rgba(245,158,11,.55)}
+#flitsrand.nieuw{animation:frpuls .6s ease-in-out 5}
+#flitsrand.te{border-color:#dc2626; box-shadow:inset 0 0 50px rgba(220,38,38,.6); animation:frpuls .8s ease-in-out infinite}
+@keyframes frpuls{0%,100%{opacity:0} 50%{opacity:1}}
+.smeld.flits.nieuw{animation:fmpuls .6s ease-in-out 5}
+@keyframes fmpuls{50%{background:#fbbf24}}
 #dimlaag{position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:5000; transition:opacity .2s}
 .dimrij{display:flex; align-items:center; gap:10px; padding:6px 4px 10px 44px; font-size:15px}
 .dimrij input{flex:1; accent-color:var(--blauw); height:28px}
@@ -569,6 +578,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   </div>
 </div>
 
+<div id="flitsrand"></div>
 <div id="dimlaag"></div>
 <!-- Probleem/suggestie melden -->
 <div class="overlay" id="meldov">
@@ -2541,8 +2551,22 @@ function tekenFlits(pos) {
   _flitsLaag.addTo(kaart);
 }
 function hoekVerschil(a, b) { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
+let _flitsSleutel = null;
+function flitsAandacht(sleutel, max, tc) {
+  const rand = $("flitsrand"), m = $("meldFlits");
+  if (sleutel && sleutel !== _flitsSleutel) { // nieuwe waarschuwing: rand + melding laten pulseren, kort trillen
+    for (const el of [rand, m]) { el.classList.remove("nieuw"); void el.offsetWidth; el.classList.add("nieuw"); }
+    try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch {}
+  }
+  _flitsSleutel = sleutel;
+  // Te snel? Live snelheid boven de limiet (+2 km/u marge), of in een trajectcontrole het gemiddelde erboven.
+  const te = !!sleutel && !!max && ((_snelheid != null && _snelheid > max + 2) || (!!tc && tc.gem != null && tc.gem > max));
+  rand.classList.toggle("te", te);
+  if (!sleutel) rand.classList.remove("nieuw");
+}
 function toonFlitsMelding(titel, sub, max, tc) {
   const m = $("meldFlits"); const aan = !!titel;
+  flitsAandacht(aan ? titel.replace(/ (over|nu)\b.*$/, "") + "|" + (max || "") : null, max, tc);
   m.classList.toggle("tc", !!tc); $("rij").classList.toggle("tcaan", !!(aan && tc));
   if (tc) {
     $("tcVul").style.height = Math.round(Math.max(0, Math.min(1, tc.deel)) * 100) + "%";
