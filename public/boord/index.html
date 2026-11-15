@@ -229,6 +229,7 @@ body.donker #routewaar{background:#8b1d14}
 /* De basis is overdag wit; in donkere modus (nachtrijden) gaan ook de opstart-, pauze- en
    menuschermen terug naar donker, zodat er 's nachts niets fel wit oplicht. */
 body.donker{background:var(--bg);color:var(--tekst)}
+html.donker{background:var(--bg); color-scheme:dark}
 body.donker .kaartje{background:var(--paneel);border-color:var(--lijn)}
 body.donker #omlnr,body.donker select,body.donker input[type=search]{background:#0b0e13;color:var(--tekst);border-color:var(--lijn)}
 body.donker .knop:not(.primair){background:#223;color:var(--tekst);border-color:var(--lijn)}
@@ -1042,8 +1043,19 @@ async function schermWakker() {
 }
 function schermLosLaten() { _wakeGewenst = false; try { _wakeLock && _wakeLock.release(); } catch {} _wakeLock = null; }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") schermWakker(); });
+// Statusbalk van de telefoon (Android theme-color) laten meelopen met wat bovenaan staat:
+// tijdens het rijden de kopkleur, op de andere schermen de achtergrond. In donkere modus donker.
+let _kopKlasse = "groen";
+function zetStatusKleur() {
+  const dk = typeof donker !== "undefined" && donker;
+  const rij = $("rij").classList.contains("aan");
+  const tc = !rij ? (dk ? "#0e1116" : "#ffffff")
+    : ({ groen: "#2e7d32", oranje: "#e8820c", blauw: "#1565c0", wit: dk ? "#1b2027" : "#ffffff" }[_kopKlasse] || "#2e7d32");
+  const mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.content = tc;
+}
 function toon(id) {
   for (const s of ["setup", "pauze", "overzicht", "rij"]) $(s).classList.toggle("aan", s === id);
+  zetStatusKleur();
   if (id === "setup") schermLosLaten(); else { _wakeGewenst = true; schermWakker(); }
 }
 
@@ -1556,8 +1568,7 @@ function zetKop(klasse, afwTekst, afwSub) {
   if (OMLOOP && OMLOOP.vrij && !_legeModus) { klasse = "wit"; if (!afwSub) afwTekst = ""; }
   const k = $("kop"); k.className = klasse;
   // Android: laat de statusbalk meelopen met de kopkleur (iOS doet dit via black-translucent).
-  const _tc = { groen: "#2e7d32", oranje: "#e8820c", blauw: "#1565c0", wit: "#ffffff" }[klasse];
-  const _mt = document.querySelector('meta[name="theme-color"]'); if (_mt && _tc) _mt.content = _tc;
+  _kopKlasse = klasse; zetStatusKleur();
   // Geen vaste bijschriften meer (op tijd/afwijking/te vroeg/te laat); de kleur toont de toestand.
   // afwSub enkel nog voor een échte melding zoals 'wacht op positie'.
   $("afw").innerHTML = esc(afwTekst) + (afwSub ? `<small>${esc(afwSub)}</small>` : "");
@@ -2461,6 +2472,8 @@ try { donker = localStorage.getItem("lk-boord-thema") === "donker"; } catch {}
 function pasThemaToe() {
   $("rij").classList.toggle("donker", donker);
   document.body.classList.toggle("donker", donker); // ook de opstart-/pauze-/menuschermen
+  document.documentElement.classList.toggle("donker", donker); // ook achter de statusbalk (iOS)
+  zetStatusKleur();
   $("menuThema").querySelector("span").textContent = donker ? "Lichte modus" : "Donkere modus";
   kleurRoute();
   // Helderheid per modus, van −50 (donkerder) tot +50 (lichter); 0 = standaard.
