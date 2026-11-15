@@ -91,8 +91,8 @@ body.donker .goed{color:#b6f0bd}
   border:2px solid rgba(255,255,255,.85); border-radius:7px; font-weight:800; font-size:14px;
   clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}
 .balk{height:12px; background:rgba(255,255,255,.3); border-radius:7px; margin:10px 0 4px; position:relative}
-.balk .vul{position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.6); border-radius:7px; transition:width .4s linear}
-.balk .knop-pos{position:absolute; top:50%; width:18px; height:18px; border-radius:50%; background:#fff;
+.balk .vul{position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(255,255,255,.6); border-radius:7px; transition:width 1s linear}
+.balk .knop-pos{position:absolute; top:50%; width:18px; height:18px; border-radius:50%; background:#fff; transition:left 1s linear;
   transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .balk .eind{position:absolute; top:50%; width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,.7); transform:translate(-50%,-50%)}
 /* De huidige halte: enige weergave, bovenaan, groot (23 px) — zichtbaar bij Halten én Kaart. */
@@ -1705,6 +1705,18 @@ function maxLimietVoor() {
   for (const paar of RIT.limieten) { if (paar[0] <= s) lim = paar[1]; else break; }
   return lim;
 }
+// Voortgangsbalk tot de volgende halte. De positie komt ±1×/s binnen; met een lineaire overgang van
+// ±1 s schuiven vulling en bolletje continu mee i.p.v. per GPS-prik te verspringen. Springt de balk
+// terug (nieuwe halte, of je staat stil vóór de halte), dan zonder animatie, anders loopt hij achteruit.
+let _balkVorig = null;
+function zetBalk(bf) {
+  const vul = $("balkvul"), pos = $("balkpos");
+  const sprong = _balkVorig == null || bf < _balkVorig - 0.02 || bf - _balkVorig > 0.5;
+  if (sprong) { vul.style.transition = pos.style.transition = "none"; }
+  vul.style.width = (bf * 100) + "%"; pos.style.left = (bf * 100) + "%";
+  if (sprong) { void vul.offsetWidth; vul.style.transition = pos.style.transition = ""; }
+  _balkVorig = bf;
+}
 function werkSnelmeterBij() {
   const nu = $("snelNu"); if (!nu) return;
   nu.textContent = (_snelheid != null) ? String(Math.round(_snelheid)) : "–";
@@ -1776,8 +1788,7 @@ function render() {
     const sPrev = (fi > 0 && halteS[fi - 1] != null) ? halteS[fi - 1] : (halteS[0] != null ? halteS[0] : 0);
     const sNext = halteS[fi] != null ? halteS[fi] : totaal;
     const bf = Math.max(0, Math.min(1, (s - sPrev) / ((sNext - sPrev) || 1)));
-    $("balkvul").style.width = (bf * 100) + "%";
-    $("balkpos").style.left = (bf * 100) + "%";
+    zetBalk(bf);
     $("balk").classList.toggle("offroute", !!(laatsteSnap && laatsteSnap.offRoute)); // gearceerd bij afwijking van de route
     // Haltelijst: de focus-halte staat bovenaan en is 'nu' (groen) zodra je er echt bij bent, anders
     // 'volgend' (de halte waar je naartoe rijdt). Halten die je 20 m voorbij bent, zijn 'gehad'.
@@ -1816,10 +1827,10 @@ function renderEnkelDoel() {
   $("tpnaam").textContent = RIT.naar || doelH.naam;
   $("klokt").textContent = klokStr(); $("klokhand").style.display = "none"; $("klok").classList.remove("wacht");
   $("balk").classList.remove("offroute");
-  if (d == null) { zetKop("wit", "– gps –"); $("balkvul").style.width = "0%"; $("balkpos").style.left = "0%"; if (kaart && laatsteSnap) zetMarker(); return; }
+  if (d == null) { zetKop("wit", "– gps –"); zetBalk(0); if (kaart && laatsteSnap) zetMarker(); return; }
   if (_enkelRef == null || d > _enkelRef) _enkelRef = Math.max(d, 100); // referentie = verste afstand gezien
   const bf = Math.max(0, Math.min(1, 1 - d / _enkelRef));
-  $("balkvul").style.width = (bf * 100) + "%"; $("balkpos").style.left = (bf * 100) + "%";
+  zetBalk(bf);
   zetKop("wit", d >= 1000 ? (d / 1000).toFixed(1) + " km" : Math.round(d) + " m"); // afstand i.p.v. afwijking
   [...$("tl").children].forEach((li, i) => { li.classList.toggle("nu", d <= 20); li.classList.toggle("volgend", d > 20); li.classList.remove("gehad"); });
   if (kaart && laatsteSnap) zetMarker();
