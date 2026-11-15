@@ -700,6 +700,15 @@ const lijnTekst = d0 => (LIJNEN && LIJNEN[d0] && LIJNEN[d0][2]) ? "#" + LIJNEN[d
 // Vaste, sterk-paarse kleur voor de te volgen route op de kaart. Paars komt niet voor in de
 // OpenStreetMap-achtergrond, dus de lijn springt er altijd goed uit (ongeacht de lijnkleur).
 const ROUTEKLEUR = "#7e22ce";
+// Op de donkere kaart valt paars weg; daar tekenen we de route in fel geel (het BusPilot-geel), dat het
+// meeste contrast geeft op een donkere ondergrond. De lichte modus blijft paars.
+const routeKleur = () => (typeof donker !== "undefined" && donker) ? "#facc15" : ROUTEKLEUR;
+let _halteMk = [];
+function kleurRoute() {
+  const k = routeKleur();
+  if (laag) laag.setStyle({ color: k });
+  _halteMk.forEach((m) => m.setStyle({ color: k }));
+}
 
 /* ===== tijd & meetkunde ===== */
 const _toMin = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? (+m[1]) * 60 + (+m[2]) : null; };
@@ -1963,13 +1972,13 @@ function maakKaart() {
   kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0 }).setView(c0, 15);
   _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
-  if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: ROUTEKLEUR, weight: 9, opacity: 1 }).addTo(kaart);
+  if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
   gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .75 }).addTo(kaart);
   // Haltebolletjes wat groter (radius 11) en zonder vaste tekst op de kaart. De namen zitten in een
   // aparte laag die enkel verschijnt als de 🏷️-knop aanstaat.
-  labelLaag = L.layerGroup();
+  labelLaag = L.layerGroup(); _halteMk = [];
   for (const h of RIT.halten) if (h.lat != null) {
-    L.circleMarker([h.lat, h.lon], { radius: 11, color: ROUTEKLEUR, weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(kaart);
+    _halteMk.push(L.circleMarker([h.lat, h.lon], { radius: 11, color: routeKleur(), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(kaart));
     labelLaag.addLayer(L.tooltip({ permanent: true, direction: "bottom", offset: [0, 13], className: "halte-label", opacity: 1 }).setLatLng([h.lat, h.lon]).setContent(h.naam));
   }
   if (toonLabels) labelLaag.addTo(kaart);
@@ -2453,6 +2462,7 @@ function pasThemaToe() {
   $("rij").classList.toggle("donker", donker);
   document.body.classList.toggle("donker", donker); // ook de opstart-/pauze-/menuschermen
   $("menuThema").querySelector("span").textContent = donker ? "Lichte modus" : "Donkere modus";
+  kleurRoute();
   // Helderheid per modus, van −50 (donkerder) tot +50 (lichter); 0 = standaard.
   // Kaart: helderheid van de kaarttegels. Donkerder: ook een zwarte laag over het hele scherm (tot 50 %).
   // Lichter in donkere modus: ook een lichte grijze waas, zodat zwart minder diep is.
