@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gereden routes · Eigennet</title>
+<link rel="icon" href="/img/favicon-32.png" sizes="32x32">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --accent:#1f5f8b; --good:#2d7d46; --bad:#c0392b; --rij:#f1f3f6; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171a; --panel:#1d2126; --fg:#e8eaed; --muted:#9aa0a6; --line:#2a2f36; --accent:#6ab0e0; --rij:#23282e; } }
+* { box-sizing:border-box }
+html, body { height:100% }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; flex-direction:column }
+header { background:var(--panel); border-bottom:1px solid var(--line); padding:8px 14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+header h1 { font-size:18px; margin:0; flex:1 }
+header a { color:var(--accent); text-decoration:none; font-size:14px }
+main { flex:1; min-height:0; display:flex }
+#zij { width:380px; flex:none; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0 }
+#kaart { flex:1; min-height:300px }
+.blok { padding:12px 14px; border-bottom:1px solid var(--line) }
+.knoppen { display:flex; gap:8px; flex-wrap:wrap }
+button, .knop { font:600 14px system-ui; padding:9px 12px; border-radius:7px; border:1px solid var(--line); background:var(--rij); color:var(--fg); cursor:pointer; display:inline-flex; align-items:center; gap:6px }
+button.prim, .knop.prim { background:var(--accent); border-color:var(--accent); color:#fff }
+button.klein { padding:5px 9px; font-size:13px; font-weight:500 }
+button:disabled { opacity:.5; cursor:default }
+input[type=search], input[type=text], input[type=date] { padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--fg); font:inherit; width:100% }
+.muted { color:var(--muted); font-size:13px }
+#lijst { flex:1; overflow-y:auto; min-height:0 }
+.r { display:flex; align-items:center; gap:9px; padding:8px 14px; border-bottom:1px solid var(--line) }
+.r:hover { background:var(--rij) }
+.r input[type=checkbox] { width:20px; height:20px; flex:none; accent-color:var(--accent) }
+.r input[type=color] { width:30px; height:26px; padding:0; border:1px solid var(--line); border-radius:6px; background:none; flex:none; cursor:pointer }
+.r .n { flex:1; min-width:0 }
+.r .n b { display:block; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:text }
+.r .n small { color:var(--muted) }
+.r .acties { display:flex; gap:4px; flex:none }
+.r .acties button { padding:4px 7px; font-size:15px; background:transparent; border-color:transparent }
+.r .acties button:hover { border-color:var(--line) }
+.r .acties button.weg.zeker { background:var(--bad); color:#fff; font-size:12px }
+.r.uit .n b { color:var(--muted) }
+.leeg { padding:24px 14px; color:var(--muted); text-align:center }
+#teken { display:none; background:#fff8db; color:#3d2e00; border-bottom:1px solid #f0d88a }
+#teken.aan { display:block }
+#teken label { display:flex; align-items:center; gap:6px; font-size:14px; margin:8px 0 }
+#melding { font-size:14px; margin-top:8px; min-height:1em }
+#melding.fout { color:var(--bad) } #melding.ok { color:var(--good) }
+.totaal { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap }
+#gate { max-width:420px; margin:40px auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; display:none }
+#dikteRij { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted) }
+#dikteRij input { flex:1 }
+@media (max-width:760px) {
+  main { flex-direction:column }
+  #zij { width:auto; border-right:0; border-top:1px solid var(--line); order:2; max-height:55vh }
+  #kaart { order:1; min-height:45vh }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Gereden routes</h1>
+  <a href="/">Eigennet</a>
+  <a href="/routetekenaar">Routetekenaar</a>
+</header>
+<div id="gate">
+  <h2 style="margin-top:0">Even inloggen</h2>
+  <p class="muted">Je gereden routes worden bewaard bij je account. Log in om ze te zien.</p>
+  <a class="knop prim" href="/login?terug=/gereden">Inloggen</a>
+</div>
+<main id="hoofd">
+  <aside id="zij">
+    <div class="blok">
+      <div class="knoppen">
+        <label class="knop prim" for="gpxIn">📂 GPX importeren</label>
+        <input type="file" id="gpxIn" accept=".gpx,application/gpx+xml" multiple hidden>
+        <button id="tekenStart">✏️ Tekenen op kaart</button>
+      </div>
+      <div id="melding" class="muted">Sleep GPX-bestanden op de kaart of kies ze hierboven. Je kan er meerdere tegelijk kiezen.</div>
+    </div>
+    <div class="blok" id="teken">
+      <b>Route tekenen</b>
+      <div class="muted">Klik op de kaart om punten te zetten.</div>
+      <label><input type="checkbox" id="langsWeg" checked> Volg de weg (berekend via BRouter)</label>
+      <input type="text" id="tekenNaam" placeholder="Naam van de route">
+      <div class="knoppen" style="margin-top:8px">
+        <button class="prim" id="tekenKlaar">Opslaan</button>
+        <button id="tekenTerug">↶ Laatste punt weg</button>
+        <button id="tekenStop">Annuleren</button>
+      </div>
+      <div class="muted" id="tekenInfo" style="margin-top:6px">0 punten · 0 km</div>
+    </div>
+    <div class="blok">
+      <input type="search" id="zoek" placeholder="Zoek op naam of datum…">
+      <div class="totaal" style="margin-top:8px">
+        <span class="muted" id="telling">–</span>
+        <span class="knoppen">
+          <button class="klein" id="allesAan">Alles aan</button>
+          <button class="klein" id="allesUit">Alles uit</button>
+        </span>
+      </div>
+      <div id="dikteRij" style="margin-top:8px">Lijndikte <input type="range" id="dikte" min="2" max="10" value="4"></div>
+    </div>
+    <div id="lijst"><div class="leeg">Laden…</div></div>
+  </aside>
+  <div id="kaart"></div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const PALET = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d", "#ca8a04", "#4f46e5"];
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+async function api(body) {
+  const r = await fetch("/api/gereden", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 403) { $("hoofd").style.display = "none"; $("gate").style.display = "block"; throw new Error(d.fout || "Log in."); }
+  if (!r.ok || d.fout) throw new Error(d.fout || "HTTP " + r.status);
+  return d;
+}
+function melding(t, soort) { const m = $("melding"); m.textContent = t; m.className = soort || "muted"; }
+
+/* ---- Kaart ---- */
+const kaart = L.map("kaart", { doubleClickZoom: false }).setView([51.05, 3.72], 10);
+const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bijdragers';
+const lagen = {
+  "Standaard": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: OSM }),
+  "Openbaar vervoer (ÖPNVKarte)": L.tileLayer("https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png", { maxZoom: 18, attribution: OSM + ", kaart memomaps.de" }),
+  "Fietskaart (CyclOSM)": L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", { maxZoom: 20, subdomains: "abc", attribution: OSM + ", stijl CyclOSM" }),
+  "Humanitair": L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", { maxZoom: 19, subdomains: "abc", attribution: OSM + ", stijl HOT" }),
+  "Luchtfoto": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Luchtfoto &copy; Esri" }),
+};
+let laagNaam = lsGet("rt-laag", "Standaard"); if (!lagen[laagNaam]) laagNaam = "Standaard";
+lagen[laagNaam].addTo(kaart);
+L.control.layers(lagen, null, { position: "topright" }).addTo(kaart);
+kaart.on("baselayerchange", (e) => lsSet("rt-laag", e.name));
+
+/* ---- Gegevens ---- */
+let ROUTES = [];               // index van de server
+const PUNTEN = {};             // id → [[lat, lon], …]
+const LIJN = {};               // id → L.polyline
+let dikte = Math.max(2, Math.min(10, +lsGet("ger-dikte", "4") || 4));
+$("dikte").value = dikte;
+
+function tekenLijn(r) {
+  const pts = PUNTEN[r.id]; if (!pts) return;
+  if (!LIJN[r.id]) {
+    LIJN[r.id] = L.polyline(pts, { color: r.kleur, weight: dikte, opacity: .85 })
+      .bindPopup(() => { const x = ROUTES.find((y) => y.id === r.id) || r; return `<b>${esc(x.naam)}</b><br>${x.km} km${x.datum ? " · " + esc(x.datum) : ""}`; });
+  }
+  LIJN[r.id].setStyle({ color: r.kleur, weight: dikte });
+  if (r.aan) LIJN[r.id].addTo(kaart); else LIJN[r.id].remove();
+}
+async function laadPunten(ids) {
+  const nodig = ids.filter((id) => !PUNTEN[id]);
+  for (let i = 0; i < nodig.length; i += 50) {
+    const d = await api({ actie: "punten", ids: nodig.slice(i, i + 50) });
+    Object.assign(PUNTEN, d.punten);
+  }
+}
+async function start() {
+  try {
+    const d = await api({ actie: "lijst" });
+    ROUTES = d.routes || [];
+    tekenLijst();
+    await laadPunten(ROUTES.filter((r) => r.aan).map((r) => r.id));
+    ROUTES.forEach(tekenLijn);
+    zoomAlles();
+  } catch (e) { melding(e.message, "fout"); }
+}
+function zoomAlles() {
+  const b = L.latLngBounds([]);
+  for (const r of ROUTES) if (r.aan && LIJN[r.id]) b.extend(LIJN[r.id].getBounds());
+  if (b.isValid()) kaart.fitBounds(b, { padding: [24, 24] });
+}
+
+/* ---- Lijst ---- */
+function tekenLijst() {
+  const q = $("zoek").value.trim().toLowerCase();
+  const zicht = ROUTES.filter((r) => !q || r.naam.toLowerCase().includes(q) || (r.datum || "").includes(q))
+    .sort((a, b) => (b.datum || "").localeCompare(a.datum || "") || b.toegevoegd - a.toegevoegd);
+  const aan = ROUTES.filter((r) => r.aan);
+  $("telling").textContent = `${ROUTES.length} routes · ${aan.length} zichtbaar · ${Math.round(aan.reduce((s, r) => s + r.km, 0))} km`;
+  if (!ROUTES.length) { $("lijst").innerHTML = `<div class="leeg">Nog geen routes. Importeer een GPX-bestand of teken een route op de kaart.</div>`; return; }
+  if (!zicht.length) { $("lijst").innerHTML = `<div class="leeg">Niets gevonden.</div>`; return; }
+  $("lijst").innerHTML = zicht.map((r) => `
+    <div class="r${r.aan ? "" : " uit"}" data-id="${r.id}">
+      <input type="checkbox" class="aan" ${r.aan ? "checked" : ""} title="Tonen op de kaart">
+      <input type="color" class="kleur" value="${r.kleur}" title="Kleur">
+      <div class="n"><b class="naam" title="Klik om de naam te wijzigen">${esc(r.naam)}</b><small>${r.km} km${r.datum ? " · " + esc(r.datum) : ""}${r.bron === "kaart" ? " · getekend" : ""}</small></div>
+      <div class="acties"><button class="zoom" title="Inzoomen">🔍</button><button class="weg" title="Verwijderen">🗑</button></div>
+    </div>`).join("");
+}
+const rVan = (el) => ROUTES.find((r) => r.id === el.closest(".r").dataset.id);
+
+// Wijzigingen (aan/uit, kleur) sturen we gebundeld en met een kleine vertraging: zo kost snel
+// klikken of aan de kleurkiezer slepen maar één schrijfbeurt op de server.
+const _wacht = new Map(); let _wachtT = 0;
+function bewaarLater(id, veld) {
+  const w = _wacht.get(id) || { id }; Object.assign(w, veld); _wacht.set(id, w);
+  clearTimeout(_wachtT); _wachtT = setTimeout(stuurWijzigingen, 1200);
+}
+async function stuurWijzigingen() {
+  if (!_wacht.size) return;
+  const wijzigingen = [..._wacht.values()]; _wacht.clear();
+  try { await api({ actie: "wijzig", wijzigingen }); } catch (e) { melding("Niet bewaard: " + e.message, "fout"); }
+}
+window.addEventListener("pagehide", () => {
+  if (_wacht.size) navigator.sendBeacon("/api/gereden", new Blob([JSON.stringify({ actie: "wijzig", wijzigingen: [..._wacht.values()] })], { type: "application/json" }));
+});
+
+$("lijst").addEventListener("change", async (e) => {
+  const r = rVan(e.target); if (!r) return;
+  if (e.target.classList.contains("aan")) {
+    r.aan = e.target.checked; e.target.closest(".r").classList.toggle("uit", !r.aan);
+    if (r.aan && !PUNTEN[r.id]) { try { await laadPunten([r.id]); } catch (er) { melding(er.message, "fout"); } }
+    tekenLijn(r); bewaarLater(r.id, { aan: r.aan }); tekenTelling();
+  }
+});
+$("lijst").addEventListener("input", (e) => {
+  if (!e.target.classList.contains("kleur")) return;
+  const r = rVan(e.target); r.kleur = e.target.value; tekenLijn(r); bewaarLater(r.id, { kleur: r.kleur });
+});
+$("lijst").addEventListener("click", async (e) => {
+  const t = e.target; const rij = t.closest(".r"); if (!rij) return; const r = rVan(t);
+  if (t.classList.contains("zoom")) {
+    if (!r.aan) { r.aan = true; rij.querySelector(".aan").checked = true; rij.classList.remove("uit"); bewaarLater(r.id, { aan: true }); }
+    if (!PUNTEN[r.id]) await laadPunten([r.id]);
+    tekenLijn(r); kaart.fitBounds(LIJN[r.id].getBounds(), { padding: [30, 30] }); LIJN[r.id].openPopup(); tekenTelling();
+  } else if (t.classList.contains("weg")) {
+    if (!t.classList.contains("zeker")) { t.classList.add("zeker"); t.textContent = "Zeker?"; setTimeout(() => { t.classList.remove("zeker"); t.textContent = "🗑"; }, 3000); return; }
+    try {
+      await api({ actie: "verwijder", id: r.id });
+      if (LIJN[r.id]) LIJN[r.id].remove(); delete LIJN[r.id]; delete PUNTEN[r.id];
+      ROUTES = ROUTES.filter((x) => x.id !== r.id); tekenLijst(); melding(`"${r.naam}" verwijderd.`, "ok");
+    } catch (er) { melding(er.message, "fout"); }
+  } else if (t.classList.contains("naam")) {
+    const inp = document.createElement("input"); inp.type = "text"; inp.value = r.naam; t.replaceWith(inp); inp.focus(); inp.select();
+    const klaar = async (opslaan) => {
+      const v = inp.value.trim();
+      if (opslaan && v && v !== r.naam) { r.naam = v; try { await api({ actie: "wijzig", wijzigingen: [{ id: r.id, naam: v }] }); } catch (er) { melding(er.message, "fout"); } }
+      tekenLijst();
+    };
+    inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") klaar(true); if (ev.key === "Escape") klaar(false); });
+    inp.addEventListener("blur", () => klaar(true));
+  }
+});
+function tekenTelling() { const aan = ROUTES.filter((r) => r.aan); $("telling").textContent = `${ROUTES.length} routes · ${aan.length} zichtbaar · ${Math.round(aan.reduce((s, r) => s + r.km, 0))} km`; }
+$("zoek").addEventListener("input", tekenLijst);
+async function allemaal(aan) {
+  const zicht = new Set([...$("lijst").querySelectorAll(".r")].map((x) => x.dataset.id));
+  const doel = ROUTES.filter((r) => zicht.has(r.id) && r.aan !== aan);
+  if (!doel.length) return;
+  doel.forEach((r) => { r.aan = aan; });
+  if (aan) { melding("Routes laden…"); try { await laadPunten(doel.map((r) => r.id)); melding(""); } catch (e) { melding(e.message, "fout"); } }
+  doel.forEach(tekenLijn); tekenLijst();
+  try { await api({ actie: "wijzig", wijzigingen: doel.map((r) => ({ id: r.id, aan })) }); } catch (e) { melding("Niet bewaard: " + e.message, "fout"); }
+  if (aan) zoomAlles();
+}
+$("allesAan").onclick = () => allemaal(true);
+$("allesUit").onclick = () => allemaal(false);
+$("dikte").oninput = () => { dikte = +$("dikte").value; lsSet("ger-dikte", dikte); ROUTES.forEach((r) => LIJN[r.id] && LIJN[r.id].setStyle({ weight: dikte })); };
+
+/* ---- GPX importeren ---- */
+const volgendeKleur = () => PALET[ROUTES.length % PALET.length];
+// Punten uitdunnen (Douglas-Peucker, ~4 m): een GPS-spoor met elke seconde een punt wordt zo
+// veel kleiner, zonder dat je verschil ziet op de kaart.
+function dunUit(pts, tol = 4) {
+  if (pts.length < 3) return pts;
+  const r = Math.PI / 180, lat0 = pts[0][0] * r, kx = 6371000 * Math.cos(lat0) * r, ky = 6371000 * r;
+  const xy = pts.map((p) => [p[1] * kx, p[0] * ky]), hou = new Uint8Array(pts.length); hou[0] = hou[pts.length - 1] = 1;
+  const stapel = [[0, pts.length - 1]];
+  while (stapel.length) {
+    const [a, b] = stapel.pop(); let maxD = 0, idx = -1;
+    const [ax, ay] = xy[a], [bx, by] = xy[b], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    for (let i = a + 1; i < b; i++) {
+      const [px, py] = xy[i]; let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD > tol) { hou[idx] = 1; stapel.push([a, idx], [idx, b]); }
+  }
+  return pts.filter((_, i) => hou[i]);
+}
+function leesGpx(tekst, bestandsnaam) {
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error(`${bestandsnaam}: geen geldig GPX-bestand.`);
+  const uit = [], basis = bestandsnaam.replace(/\.gpx$/i, "");
+  const naamVan = (el, n) => { const x = [...el.children].find((c) => c.localName === "name"); return (x && x.textContent.trim()) || (n > 1 ? `${basis} (${uit.length + 1})` : basis); };
+  const datumVan = (el) => { const t = el.getElementsByTagName("time")[0] || doc.getElementsByTagName("time")[0]; return t ? t.textContent.slice(0, 10) : ""; };
+  const pt = (p) => [+p.getAttribute("lat"), +p.getAttribute("lon")];
+  const trks = [...doc.getElementsByTagName("trk")], rtes = [...doc.getElementsByTagName("rte")];
+  for (const t of trks) {
+    const pts = [...t.getElementsByTagName("trkpt")].map(pt).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+    if (pts.length > 1) uit.push({ naam: naamVan(t, trks.length), datum: datumVan(t), pts });
+  }
+  if (!uit.length) for (const t of rtes) {
+    const pts = [...t.getElementsByTagName("rtept")].map(pt).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+    if (pts.length > 1) uit.push({ naam: naamVan(t, rtes.length), datum: datumVan(t), pts });
+  }
+  if (!uit.length) throw new Error(`${bestandsnaam}: geen route of spoor gevonden.`);
+  return uit;
+}
+async function voegToe(r, bron) {
+  const pts = dunUit(r.pts);
+  const d = await api({ actie: "bewaar", naam: r.naam, datum: r.datum, kleur: r.kleur || volgendeKleur(), pts, bron });
+  ROUTES.push(d.route); PUNTEN[d.route.id] = pts; tekenLijn(d.route);
+  return d.route;
+}
+async function importeer(bestanden) {
+  const lijst = [...bestanden].filter((f) => /\.gpx$/i.test(f.name) || f.type.includes("gpx"));
+  if (!lijst.length) { melding("Kies een .gpx-bestand.", "fout"); return; }
+  let n = 0; const fouten = [], nieuw = [];
+  for (const f of lijst) {
+    try {
+      for (const r of leesGpx(await f.text(), f.name)) { melding(`Importeren… ${++n}`); nieuw.push(await voegToe(r, "gpx")); }
+    } catch (e) { fouten.push(e.message); }
+  }
+  tekenLijst();
+  if (nieuw.length) {
+    const b = L.latLngBounds([]); nieuw.forEach((r) => LIJN[r.id] && b.extend(LIJN[r.id].getBounds()));
+    if (b.isValid()) kaart.fitBounds(b, { padding: [24, 24] });
+  }
+  melding((nieuw.length ? `${nieuw.length} route${nieuw.length > 1 ? "s" : ""} toegevoegd.` : "") + (fouten.length ? " " + fouten.join(" ") : ""), fouten.length ? "fout" : "ok");
+}
+$("gpxIn").onchange = (e) => { importeer(e.target.files); e.target.value = ""; };
+const kaartEl = $("kaart");
+kaartEl.addEventListener("dragover", (e) => { e.preventDefault(); });
+kaartEl.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) importeer(e.dataTransfer.files); });
+
+/* ---- Tekenen op de kaart ---- */
+let teken = null; // { klikken: [latlng], stukken: [[pts]], lijn, markers }
+const BROUTER = "https://brouter.de/brouter";
+async function stukTussen(a, b) {
+  if (!$("langsWeg").checked) return [[a.lat, a.lng], [b.lat, b.lng]];
+  try {
+    const ll = `${a.lng.toFixed(6)},${a.lat.toFixed(6)}|${b.lng.toFixed(6)},${b.lat.toFixed(6)}`;
+    const r = await fetch(`${BROUTER}?lonlats=${encodeURIComponent(ll)}&profile=car-fast&alternativeidx=0&format=geojson`);
+    if (!r.ok) throw new Error();
+    const gj = await r.json();
+    return gj.features[0].geometry.coordinates.map((c) => [c[1], c[0]]);
+  } catch { melding("De weg volgen lukte niet; dit stuk is een rechte lijn.", "fout"); return [[a.lat, a.lng], [b.lat, b.lng]]; }
+}
+const tekenPts = () => teken.stukken.length ? teken.stukken.flatMap((s, i) => i ? s.slice(1) : s) : teken.klikken.map((p) => [p.lat, p.lng]);
+function kmVan(pts) { let m = 0; for (let i = 1; i < pts.length; i++) m += L.latLng(pts[i - 1]).distanceTo(pts[i]); return Math.round(m / 100) / 10; }
+function tekenBij() {
+  const pts = tekenPts(); teken.lijn.setLatLngs(pts);
+  $("tekenInfo").textContent = `${teken.klikken.length} punten · ${kmVan(pts)} km`;
+}
+$("tekenStart").onclick = () => {
+  if (teken) return;
+  teken = { klikken: [], stukken: [], lijn: L.polyline([], { color: "#f59e0b", weight: 5, dashArray: "8 6" }).addTo(kaart), markers: L.layerGroup().addTo(kaart), bezig: false };
+  $("teken").classList.add("aan"); $("tekenNaam").value = ""; kaart.getContainer().style.cursor = "crosshair"; tekenBij();
+};
+function tekenWeg() {
+  if (!teken) return; teken.lijn.remove(); teken.markers.remove(); teken = null;
+  $("teken").classList.remove("aan"); kaart.getContainer().style.cursor = "";
+}
+$("tekenStop").onclick = tekenWeg;
+kaart.on("click", async (e) => {
+  if (!teken || teken.bezig) return;
+  const p = e.latlng, vorige = teken.klikken[teken.klikken.length - 1];
+  teken.klikken.push(p);
+  L.circleMarker(p, { radius: 5, color: "#b45309", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(teken.markers);
+  if (vorige) { teken.bezig = true; teken.stukken.push(await stukTussen(vorige, p)); teken.bezig = false; }
+  tekenBij();
+});
+$("tekenTerug").onclick = () => {
+  if (!teken || !teken.klikken.length || teken.bezig) return;
+  teken.klikken.pop(); if (teken.stukken.length >= teken.klikken.length && teken.stukken.length) teken.stukken.pop();
+  const m = teken.markers.getLayers(); if (m.length) teken.markers.removeLayer(m[m.length - 1]);
+  tekenBij();
+};
+$("tekenKlaar").onclick = async () => {
+  if (!teken) return;
+  const pts = tekenPts();
+  if (pts.length < 2) { melding("Zet minstens twee punten op de kaart.", "fout"); return; }
+  const naam = $("tekenNaam").value.trim() || `Getekende route ${new Date().toLocaleDateString("nl-BE")}`;
+  try {
+    $("tekenKlaar").disabled = true;
+    const r = await voegToe({ naam, datum: new Date().toISOString().slice(0, 10), pts }, "kaart");
+    tekenWeg(); tekenLijst(); melding(`"${r.naam}" bewaard.`, "ok");
+  } catch (e) { melding(e.message, "fout"); } finally { $("tekenKlaar").disabled = false; }
+};
+
+start();
+</script>
+</body>
+</html>

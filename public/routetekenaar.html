@@ -63,7 +63,8 @@
     <button type="button" id="rt-haltes" class="rt-active" title="Haltes uit je opgeslagen routes tonen. Klik erop om je route daar te beginnen (of verder te tekenen)."><span class="rt-busleg" style="background:#f59e0b;height:8px;width:8px;border-radius:50%"></span>Eerdere haltes</button>
     <button type="button" id="rt-bus" title="Busbanen en busstraten uit OpenStreetMap tonen (vanaf zoomniveau 13)"><span class="rt-busleg"></span>Busbanen tonen</button>
     <button type="button" id="rt-brouter" title="Open dezelfde kaartplek in BRouter-web, met uitleg en het busprofiel">BRouter-web…</button>
-    <button type="button" id="rt-opslaan" title="Deze route op de site bewaren, zodat ze in de boordcomputer klaarstaat">Opslaan op de site</button>
+    <button type="button" id="rt-opslaan" title="Deze route op de site bewaren, zodat ze in de boordcomputer klaarstaat">Opslaan als rit</button>
+    <button type="button" id="rt-gereden" title="Bewaren bij je gereden routes (pagina Gereden routes)">Opslaan als gereden route</button>
     <button type="button" id="rt-opgeslagen" title="Routes die op de site bewaard zijn">Opgeslagen routes…</button>
     <button type="button" id="rt-rijden" title="Deze route rijden in de boordcomputer, zonder dienstregeling">Rijden in boordcomputer</button>
     <button type="button" id="rt-export" class="rt-primary">Download GPX</button>
@@ -686,11 +687,37 @@
     routeApi({ actie: 'bewaar', naam: naam, gpx: buildGpx(), km: routeKm(), haltes: points.filter(function (p) { return p.stop; }).length })
       .then(function () { knop.textContent = '✓ Opgeslagen'; })
       .catch(function (e) {
-        knop.textContent = 'Opslaan op de site';
+        knop.textContent = 'Opslaan als rit';
         if (e.status === 401 || e.status === 403) { if (confirm(e.message + '\n\nNu inloggen? (Je route blijft hier niet bewaard, download ze eerst als GPX.)')) location.href = '/login?terug=/routetekenaar'; }
         else alert('Opslaan mislukt: ' + e.message);
       })
-      .then(function () { knop.disabled = false; setTimeout(function () { knop.textContent = 'Opslaan op de site'; }, 2500); });
+      .then(function () { knop.disabled = false; setTimeout(function () { knop.textContent = 'Opslaan als rit'; }, 2500); });
+  }
+  // Bewaren bij "Gereden routes" (eigen lijst per gebruiker, met kleur en aan/uit op een kaart).
+  function opslaanGereden() {
+    if (points.length < 2) { alert('Teken eerst een route met minstens twee punten.'); return; }
+    var busy = points.some(function (p, i) { return i > 0 && p.req && p.lineIn && p.lineIn.options.dashArray === STYLE.loading.dashArray; });
+    if (busy) { alert('De route wordt nog berekend. Probeer het zo meteen opnieuw.'); return; }
+    var naam = el('rt-name').value.trim();
+    if (!naam || naam === 'Nieuwe route') {
+      naam = (prompt('Naam van de gereden route:', naam === 'Nieuwe route' ? '' : naam) || '').trim();
+      if (!naam) return;
+      el('rt-name').value = naam;
+    }
+    var pts = [[points[0].latlng.lat, points[0].latlng.lng]];
+    for (var i = 1; i < points.length; i++) (points[i].coordsIn || []).forEach(function (c) { pts.push([c[0], c[1]]); });
+    var knop = el('rt-gereden');
+    knop.disabled = true; knop.textContent = 'Bezig…';
+    fetch('/api/gereden', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actie: 'bewaar', naam: naam, pts: pts, bron: 'kaart', datum: new Date().toISOString().slice(0, 10) }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok || d.fout) { var e = new Error(d.fout || ('Fout ' + r.status)); e.status = r.status; throw e; } return d; }); })
+      .then(function () { knop.textContent = '✓ Bij gereden routes'; })
+      .catch(function (e) {
+        knop.textContent = 'Opslaan als gereden route';
+        if (e.status === 401 || e.status === 403) { if (confirm(e.message + '\n\nNu inloggen? (Je route blijft hier niet bewaard, download ze eerst als GPX.)')) location.href = '/login?terug=/routetekenaar'; }
+        else alert('Opslaan mislukt: ' + e.message);
+      })
+      .then(function () { knop.disabled = false; setTimeout(function () { knop.textContent = 'Opslaan als gereden route'; }, 2500); });
   }
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function toonOpgeslagen() {
@@ -703,7 +730,7 @@
           '<button type="button" data-a="open" data-id="' + esc(x.id) + '">Bewerken</button>' +
           '<button type="button" data-a="rij" data-id="' + esc(x.id) + '">Rijden</button>' +
           '<button type="button" data-a="weg" data-id="' + esc(x.id) + '" data-naam="' + esc(x.naam) + '" title="Verwijderen">✕</button></div>';
-      }).join('') : 'Nog geen routes opgeslagen. Teken een route en klik <b>Opslaan op de site</b>.';
+      }).join('') : 'Nog geen routes opgeslagen. Teken een route en klik <b>Opslaan als rit</b>.';
       el('rt-opmelding').textContent = '';
     }).catch(function (e) { el('rt-oplijst').textContent = ''; el('rt-opmelding').textContent = e.message; });
   }
@@ -907,6 +934,7 @@
   el('rt-export').addEventListener('click', exportGpx);
   el('rt-rijden').addEventListener('click', rijden);
   el('rt-opslaan').addEventListener('click', opslaan);
+  el('rt-gereden').addEventListener('click', opslaanGereden);
   el('rt-opgeslagen').addEventListener('click', toonOpgeslagen);
   el('rt-op-sluit').addEventListener('click', function () { el('rt-op').classList.remove('aan'); });
   el('rt-bus').addEventListener('click', busToggle);

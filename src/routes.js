@@ -410,6 +410,81 @@ const _posNet = new Map(), _posLees = new Map(), _berichtCache = new Map();
 // De boordcomputer meldt welke omloop gestart wordt; hier hoeft dat niet bijgehouden te worden.
 const apiStil = async () => json({ ok: true });
 
+
+// --- Gereden routes -------------------------------------------------------------
+// Elke gebruiker bewaart zijn eigen gereden routes: één indexblob met naam/kleur/aan-uit per route
+// (één leesactie voor de lijst) en per route een aparte blob met de punten.
+const GER_MAX = 500, GER_PUNTEN = 30000;
+const KLEUR_OK = (k) => /^#[0-9a-f]{6}$/i.test(String(k || "")) ? String(k).toLowerCase() : "#2563eb";
+async function gerUid(req, env, c) {
+  if (!authAan(env)) return "open";
+  const u = await huidigeUser(c.authSt, env, req);
+  return u ? String(u.email).toLowerCase().replace(/[^a-z0-9._@-]/g, "_") : null;
+}
+function gerKm(pts) {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]], r = Math.PI / 180;
+    const x = (b[1] - a[1]) * r * Math.cos((a[0] + b[0]) * r / 2), y = (b[0] - a[0]) * r;
+    m += Math.sqrt(x * x + y * y) * 6371000;
+  }
+  return Math.round(m / 100) / 10;
+}
+async function apiGereden(req, env, c) {
+  if (req.method !== "POST") return json({ fout: "methode" }, 405);
+  const uid = await gerUid(req, env, c);
+  if (!uid) return json({ fout: "Log in om je gereden routes te zien." }, 403);
+  const b = await req.json().catch(() => ({}));
+  const pre = `gereden/${uid}/`, idxKey = pre + "index";
+  const index = (await c.st.getJSONveilig(idxKey, [])) || [];
+  const actie = b.actie || "lijst";
+  if (actie === "lijst") return json({ routes: index });
+  if (actie === "punten") {
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(netId).filter((id) => index.some((r) => r.id === id)).slice(0, 60);
+    const lijst = await Promise.all(ids.map((id) => c.st.getJSONveilig(pre + "trk/" + id, null)));
+    const punten = {}; ids.forEach((id, i) => { punten[id] = lijst[i] || []; });
+    return json({ punten });
+  }
+  if (actie === "bewaar") {
+    if (index.length >= GER_MAX) return json({ fout: `Je kan maximaal ${GER_MAX} routes bewaren.` }, 400);
+    const pts = (Array.isArray(b.pts) ? b.pts : [])
+      .map((p) => [Math.round(Number(p[0]) * 1e5) / 1e5, Math.round(Number(p[1]) * 1e5) / 1e5])
+      .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180);
+    if (pts.length < 2) return json({ fout: "Een route heeft minstens twee punten nodig." }, 400);
+    if (pts.length > GER_PUNTEN) return json({ fout: "Deze route heeft te veel punten." }, 400);
+    const id = "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const r = {
+      id, naam: String(b.naam || "Route").trim().slice(0, 100) || "Route", kleur: KLEUR_OK(b.kleur), aan: true,
+      km: gerKm(pts), datum: /^\d{4}-\d{2}-\d{2}/.test(String(b.datum || "")) ? String(b.datum).slice(0, 10) : "",
+      bron: b.bron === "kaart" ? "kaart" : "gpx", toegevoegd: Date.now(),
+    };
+    await c.st.setJSON(pre + "trk/" + id, pts);
+    index.push(r);
+    await c.st.setJSON(idxKey, index);
+    return json({ route: r });
+  }
+  if (actie === "wijzig") {
+    // Eén of meer routes tegelijk: { wijzigingen: [{ id, naam?, kleur?, aan? }] } (bv. alles aan/uit = één schrijfbeurt).
+    const lijst = Array.isArray(b.wijzigingen) ? b.wijzigingen : [b];
+    for (const w of lijst) {
+      const r = index.find((x) => x.id === netId(w.id)); if (!r) continue;
+      if (w.naam !== undefined) r.naam = String(w.naam).trim().slice(0, 100) || r.naam;
+      if (w.kleur !== undefined) r.kleur = KLEUR_OK(w.kleur);
+      if (w.aan !== undefined) r.aan = !!w.aan;
+      if (w.datum !== undefined) r.datum = /^\d{4}-\d{2}-\d{2}$/.test(String(w.datum)) ? String(w.datum) : "";
+    }
+    await c.st.setJSON(idxKey, index);
+    return json({ routes: index });
+  }
+  if (actie === "verwijder") {
+    const id = netId(b.id);
+    if (!index.some((r) => r.id === id)) return json({ fout: "Route niet gevonden." }, 404);
+    await c.st.setJSON(idxKey, index.filter((r) => r.id !== id));
+    await c.st.delete(pre + "trk/" + id).catch(() => {});
+    return json({ ok: true });
+  }
+  return json({ fout: "Onbekende actie." }, 400);
+}
 export const ROUTES = {
   "/api/login": authLogin,
   "/api/register": authRegister,
@@ -419,6 +494,7 @@ export const ROUTES = {
   "/api/net": apiNet,
   "/api/eigenpos": apiEigenpos,
   "/api/route": apiRoute,
+  "/api/gereden": apiGereden,
   "/api/omloopgebruik": apiStil,
   "/api/melden": apiStil,
 };
