@@ -338,6 +338,15 @@ body.donker .omlstatus.waar{color:#ffd9a8;background:rgba(232,130,12,.16)}
 .score-groot.zwak .getal{color:#b42318}
 .score-fb{font-size:17px; font-weight:600; margin:2px 10px 8px}
 .score-detail{font-size:14px; color:#5a626e; font-variant-numeric:tabular-nums}
+.score-cats{display:grid; grid-template-columns:auto 1fr 34px; align-items:center; gap:9px 12px; margin:4px 6px 12px; text-align:left; font-size:15px}
+.scat{display:contents; color:inherit}
+.scat .sn{font-weight:600}
+.scat .sb{height:10px; border-radius:5px; background:rgba(0,0,0,.1); overflow:hidden}
+.scat .sb i{display:block; height:100%; border-radius:5px; background:#067647}
+.scat.sk-matig .sb i{background:#e8820c} .scat.sk-zwak .sb i{background:#c62828}
+.scat b{text-align:right; font-variant-numeric:tabular-nums}
+.scat.sk-leeg > *{opacity:.5}
+body.donker .scat .sb{background:rgba(255,255,255,.15)}
 body.donker .score-groot .getal small, body.donker .score-detail{color:#9aa3af}
 .ritkeuze{display:flex; flex-direction:column; gap:6px}
 .ritkeuze button{display:grid; grid-template-columns:52px 60px 1fr; gap:10px; align-items:center; text-align:left}
@@ -1061,6 +1070,7 @@ let _gpsGeweigerd = false; // de chauffeur weigerde de locatietoestemming
 let laatstePos = null;  // laatst bekende ruwe GPS-positie [lat,lon], om bij een ritwissel opnieuw te snappen
 let _bewHoek = null;    // laatst bekende rijrichting (graden, 0=noord) — voor het draaien van de kaart
 let _snelheid = null;   // huidige snelheid in km/u (null = nog onbekend), licht afgevlakt
+let _vorigeKmu = null;  // ruwe snelheid van de vorige fix (km/u), om versnelling/remmen te meten
 let _vorigeT = 0;       // tijdstip van de vorige GPS-fix, om snelheid uit verplaatsing te schatten
 let volgModus = true;  // standaard volgmodus (kaart volgt de bus); tik 🎯 om vrij te bewegen
 let _volgNu = null, _volgDoel = null, _volgAnim = null; // vloeiende volgmodus (geanimeerde positie/richting)
@@ -1522,7 +1532,8 @@ function startSnap() {
 function startRijden() {
   clearInterval(window._pt);
   if (_pauzeSleutel) { try { localStorage.removeItem(_pauzeSleutel); } catch {} _pauzeSleutel = ""; }
-  _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0, snelTot: 0, snelTe: 0, snelVeel: 0, snelMax: 0 };   // meting voor de ritscore resetten
+  _ritStat = { devs: [], lastFi: -1, off: 0, tot: 0, snelTot: 0, snelTe: 0, snelVeel: 0, snelMax: 0,
+               rijSec: 0, rijMeter: 0, accN: 0, accRustig: 0, rem: 0, trek: 0, _remAan: false, _trekAan: false };   // meting voor de ritscore resetten
   toon("rij"); updMeldingen();
   tekenLijst();
   vulVolgStrip();
@@ -1860,33 +1871,59 @@ let _eindBezig = false, _omloopKlaar = false;
 // Op het einde van een rit: één score (0–100) uit de stiptheid per halte, de route-trouw en (waar de
 // limiet gekend is) het respecteren van de maximumsnelheid.
 // Volledig in de boordcomputer; niets wordt weggeschreven.
+// Rijgedrag per GPS-fix (±1 s): versnelling a in m/s² (+ optrekken, − remmen), snelheid v in km/u.
+// Bussen: vanaf ±1,5 m/s² optrekken of ±2 m/s² remmen voelen passagiers het duidelijk (staanplaatsen).
+// Eén ruk telt één keer, ook al duurt ze enkele seconden.
+const ACC_RUSTIG = 0.8, TREK_RUK = 1.5, REM_RUK = -2.0;
+function noteerRijgedrag(a, v, dts, m) {
+  const st = _ritStat; if (!st || _legeModus || (OMLOOP && OMLOOP.vrij)) return;
+  if (Math.abs(a) > 6) return;           // GPS-sprong, geen echte beweging
+  if (v < 3 && Math.abs(a) < 0.3) return; // stilstand telt niet mee
+  st.rijSec += dts; st.rijMeter += m || 0;
+  st.accN++; if (Math.abs(a) <= ACC_RUSTIG) st.accRustig++;
+  if (a <= REM_RUK) { if (!st._remAan) { st.rem++; st._remAan = true; } } else if (a > REM_RUK / 2) st._remAan = false;
+  if (a >= TREK_RUK) { if (!st._trekAan) { st.trek++; st._trekAan = true; } } else if (a < TREK_RUK / 2) st._trekAan = false;
+}
 function berekenScore(st) {
   if (!st || st.devs.length < 2 || st.tot < 5) return null;   // te weinig data voor een eerlijke score
-  // Punten per halte op basis van de afwijking (minuten; <0 te vroeg, >0 te laat).
+  // 1) Op tijd: punten per halte op basis van de afwijking (minuten; <0 te vroeg, >0 te laat).
   const puntVoor = (d) => {
     if (d < -1) return Math.max(0, 100 - (-d - 1) * 35);      // te vroeg rijden weegt zwaar
     if (d <= 3) return 100 - Math.max(0, d) * 3;              // op tijd tot licht te laat: bijna vol
     return Math.max(0, 100 - 9 - (d - 3) * 12);               // vanaf +3 min sneller zakken
   };
-  const stipt = st.devs.reduce((a, d) => a + puntVoor(d), 0) / st.devs.length;
+  const optijd = st.devs.reduce((a, d) => a + puntVoor(d), 0) / st.devs.length;
   const route = st.tot > 0 ? (100 * (st.tot - st.off) / st.tot) : 100;
-  // Snelheid: aandeel van de rijtijd binnen de limiet (+3 km/u marge); veel te snel (> +10) telt dubbel.
-  // Zonder snelheidsgegevens (geen limieten op deze route) valt dit deel weg.
-  const metSnel = (st.snelTot || 0) >= 30;
-  const snel = metSnel ? Math.max(0, 100 * (1 - 3 * (st.snelTe + 2 * st.snelVeel) / st.snelTot)) : null;
-  const totaal = Math.round(metSnel ? stipt * 0.6 + route * 0.2 + snel * 0.2 : stipt * 0.75 + route * 0.25);
+  // 2) Snelheid: aandeel van de rijtijd binnen de limiet (+3 km/u marge); veel te snel (> +10) telt dubbel.
+  const snel = (st.snelTot || 0) >= 30 ? Math.max(0, 100 * (1 - 3 * (st.snelTe + 2 * st.snelVeel) / st.snelTot)) : null;
+  // 3) Vlotheid: hoe gelijkmatig je rijdt — aandeel van de rijtijd met een rustige snelheidsverandering.
+  const vlot = (st.accN || 0) >= 60 ? Math.min(100, Math.max(0, (st.accRustig / st.accN - 0.6) / 0.35 * 100)) : null;
+  // 4) Remmen en optrekken: aantal bruuske momenten per 10 rijminuten (0 = 100, elk moment kost 15).
+  const ruk = (st.rijSec || 0) >= 120 ? Math.max(0, 100 - 15 * (st.rem + st.trek) * 600 / st.rijSec) : null;
+  // Totaal: op tijd weegt het zwaarst; ontbrekende categorieën (geen limieten / te kort) vallen weg.
+  const delen = [[optijd, 40], [snel, 20], [vlot, 20], [ruk, 20]].filter(([w]) => w != null);
+  let totaal = delen.reduce((a, [w, g]) => a + w * g, 0) / delen.reduce((a, [, g]) => a + g, 0);
+  if (route < 80) totaal *= 0.85 + 0.15 * route / 100;        // vaak van de route: lichte aftrek
+  totaal = Math.round(totaal);
   const sterren = Math.max(1, Math.min(5, Math.round(totaal / 20)));
   const teVroeg = st.devs.filter(d => d < -1).length;
   const teLaat = st.devs.filter(d => d >= 5).length;
+  // Feedback: de zwakste categorie eerst.
   let fb;
+  const zwakst = [["snel", snel], ["ruk", ruk], ["vlot", vlot]].filter(([, w]) => w != null && w < 75).sort((a, b) => a[1] - b[1])[0];
   if (route < 80) fb = "Je week vaak van de route af.";
-  else if (metSnel && snel < 80) fb = "Je reed regelmatig te snel" + (st.snelMax > 3 ? ` (tot ${st.snelMax} km/u boven de limiet).` : ".");
   else if (teVroeg > st.devs.length / 3) fb = "Vaak te vroeg — iets trager rijden.";
+  else if (zwakst && zwakst[0] === "snel") fb = "Je reed regelmatig te snel" + (st.snelMax > 3 ? ` (tot ${st.snelMax} km/u boven de limiet).` : ".");
+  else if (zwakst && zwakst[0] === "ruk") fb = `${st.rem} keer bruusk geremd en ${st.trek} keer bruusk opgetrokken — rustiger voor je passagiers.`;
+  else if (zwakst && zwakst[0] === "vlot") fb = "Probeer gelijkmatiger te rijden: minder versnellen en vertragen.";
   else if (teLaat > st.devs.length / 3) fb = "Vaak te laat — probeer bij te blijven.";
-  else if (totaal >= 90) fb = "Mooi op tijd gereden!";
+  else if (totaal >= 90) fb = "Mooi en vlot gereden!";
   else if (totaal >= 75) fb = "Nette rit.";
   else fb = "Kan strakker op het schema.";
-  return { totaal, sterren, stipt: Math.round(stipt), route: Math.round(route), snel: snel == null ? null : Math.round(snel), fb };
+  const rond = w => w == null ? null : Math.round(w);
+  return { totaal, sterren, fb, route: Math.round(route),
+    cat: [["Op tijd", rond(optijd)], ["Snelheid", rond(snel)], ["Vlotheid", rond(vlot)], ["Remmen & optrekken", rond(ruk)]],
+    rem: st.rem || 0, trek: st.trek || 0 };
 }
 function toonRitscore(res, laatste) {
   if (!res) return;
@@ -1897,7 +1934,11 @@ function toonRitscore(res, laatste) {
     `<div class="score-groot ${kl}"><span class="sterren">${"★".repeat(res.sterren)}${"☆".repeat(5 - res.sterren)}</span>`
     + `<span class="getal">${res.totaal}<small>/100</small></span></div>`
     + `<div class="score-fb">${esc(res.fb)}</div>`
-    + `<div class="score-detail">Stiptheid ${res.stipt}% · Route ${res.route}%${res.snel != null ? ` · Snelheid ${res.snel}%` : ""}</div>`;
+    + `<div class="score-cats">${res.cat.map(([naam, w]) => {
+        const k = w == null ? "sk-leeg" : w >= 85 ? "sk-goed" : w >= 70 ? "sk-matig" : "sk-zwak";
+        return `<div class="scat ${k}"><span class="sn">${naam}</span><span class="sb"><i style="width:${w == null ? 0 : w}%"></i></span><b>${w == null ? "–" : w}</b></div>`;
+      }).join("")}</div>`
+    + `<div class="score-detail">Route gevolgd ${res.route}%${res.rem || res.trek ? ` · ${res.rem}× bruusk remmen · ${res.trek}× bruusk optrekken` : ""}</div>`;
   $("scoreov").classList.add("aan");
   clearTimeout(window._scoreT); window._scoreT = setTimeout(() => $("scoreov").classList.remove("aan"), 12000);
 }
@@ -1934,6 +1975,11 @@ function startGps() {
     let _kmu = null;
     if (pos.coords.speed != null && !isNaN(pos.coords.speed) && pos.coords.speed >= 0) _kmu = pos.coords.speed * 3.6;
     else if (vorige && _vorigeT) { const dt = (pos.timestamp - _vorigeT) / 1000; if (dt > 0.3 && dt < 30) _kmu = meter(vorige, laatstePos) / dt * 3.6; }
+    if (_kmu != null && _vorigeKmu != null && vorige && _vorigeT) {
+      const dts = (pos.timestamp - _vorigeT) / 1000;
+      if (dts >= 0.5 && dts <= 3) noteerRijgedrag((_kmu - _vorigeKmu) / 3.6 / dts, _kmu, dts, meter(vorige, laatstePos));
+    }
+    _vorigeKmu = _kmu;
     _vorigeT = pos.timestamp;
     if (_kmu != null && _kmu < 160) _snelheid = (_snelheid == null) ? _kmu : _snelheid * 0.6 + _kmu * 0.4;
     // Rijrichting bepalen (om de kaart te draaien, óók als je van de route afwijkt): uit de echte
@@ -1982,7 +2028,7 @@ $("meldGpsKnop").onclick = async () => {
   else toast("Even geduld, je toestel vraagt nu om locatietoegang…", 5000);
   _gpsWeg = false; startGps(); updMeldingen();
 };
-function stopGps() { if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch {} watchId = null; } _snelheid = null; _vorigeT = 0; stopPosDelen(); }
+function stopGps() { if (watchId != null) { try { navigator.geolocation.clearWatch(watchId); } catch {} watchId = null; } _snelheid = null; _vorigeT = 0; _vorigeKmu = null; stopPosDelen(); }
 
 // Live positie delen (eigen net): tijdens het rijden sturen we de GPS-positie naar de server, zodat de
 // halteborden/kaart de bus live tonen. Zuinig: hoogstens één schrijfbeurt per 20 sec per bus, en enkel
