@@ -2196,7 +2196,8 @@ function maakKaart() {
   kaart.on("zoomend", () => { if (performance.now() > _eigenZoomTot && _zoomAuto != null) _zoomExtra = Math.max(-3, Math.min(3, kaart.getZoom() - _zoomAuto)); });
   _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
-  if (!RIT.enkelDoel) laag = L.polyline(RIT.pts, { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
+  if (!RIT.enkelDoel) laag = L.polyline(tekenPts(), { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
+  if (!ROT) laadRot();
   gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .75 }).addTo(kaart);
   // Haltebolletjes wat groter (radius 11) en zonder vaste tekst op de kaart. De namen zitten in een
   // aparte laag die enkel verschijnt als de 🏷️-knop aanstaat.
@@ -2469,9 +2470,37 @@ function puntOpS(s) {
    enkel waar de route effectief door een rotonde rijdt, melden we "rotonde", met het afslagnummer.
    Een scherpe bocht zonder rotonde blijft gewoon een bocht. */
 let ROT = null, _rotBezig = false, _rotVoor = null, _rotRit = [];
+// Te tekenen route: de vormlijn van De Lijn legt rotondes vaak scheef of als lus ernaast. Voor de kaart
+// vervangen we elke rotondedoorgang door een boog over de rotonde zelf, tegen de klok in.
+function tekenPts() {
+  const pts = RIT.pts;
+  if (!ROT || !RIT.geo || pts.length < 3) return pts;
+  const pas = rotPassages().filter(p => !p.mini && p.c && p.ring);
+  if (!pas.length) return pts;
+  const cum = RIT.geo.cum, uit = []; let i = 0, tot = -1;
+  for (const p of pas) {
+    if (p.sIn <= tot) continue;
+    while (i < pts.length && cum[i] < p.sIn) uit.push(pts[i++]);
+    const pIn = puntOpS(p.sIn), pUit = puntOpS(p.sUit);
+    const kx = 111320 * Math.cos(p.c[0] * Math.PI / 180), ky = 111320;
+    const hoek = q => Math.atan2((q[0] - p.c[0]) * ky, (q[1] - p.c[1]) * kx);
+    let a1 = hoek(pIn), a2 = hoek(pUit);
+    while (a2 <= a1 + 0.2) a2 += 2 * Math.PI;   // tegen de klok in rond
+    uit.push(pIn);
+    for (let a = a1; a <= a2 + 1e-9; a += Math.PI / 12)
+      uit.push([p.c[0] + Math.sin(a) * p.ring / ky, p.c[1] + Math.cos(a) * p.ring / kx]);
+    uit.push([p.c[0] + Math.sin(a2) * p.ring / ky, p.c[1] + Math.cos(a2) * p.ring / kx]);
+    uit.push(pUit);
+    while (i < pts.length && cum[i] <= p.sUit) i++;
+    tot = p.sUit;
+  }
+  while (i < pts.length) uit.push(pts[i++]);
+  return uit;
+}
 async function laadRot() {
   if (ROT || _rotBezig) return; _rotBezig = true;
   try { const d = await haal("/gtfs/rotondes.json"); ROT = { r: d.r || [], m: d.m || [] }; } catch {}
+  if (ROT && laag && RIT && !RIT.enkelDoel) laag.setLatLngs(tekenPts()); // route mooi over de rotondes leggen
   _rotBezig = false;
 }
 const rangTekst = n => n === 1 ? "1ste" : n + "de";
@@ -2487,23 +2516,29 @@ function rotPassages() {
   for (const p of pts) { la0 = Math.min(la0, p[0]); la1 = Math.max(la1, p[0]); lo0 = Math.min(lo0, p[1]); lo1 = Math.max(lo1, p[1]); }
   const m = 0.003, binnen = (a, b) => a >= la0 - m && a <= la1 + m && b >= lo0 - m && b <= lo1 + m;
   const kand = [];
-  for (const r of ROT.r) if (binnen(r[0], r[1])) kand.push({ c: [r[0], r[1]], R: r[2] + 6, hoeken: r[3], mini: false });
+  for (const r of ROT.r) if (binnen(r[0], r[1])) kand.push({ c: [r[0], r[1]], R: r[2] + 6, ring: r[2], hoeken: r[3], mini: false });
   for (const r of ROT.m) if (binnen(r[0], r[1])) kand.push({ c: [r[0], r[1]], R: 12, hoeken: null, mini: true });
   for (const k of kand) {
     // stukken van de route die dicht genoeg bij het middelpunt komen, in stapjes van 2 m afgetast
+    // De vormlijn van De Lijn tekent een rotonde soms als ruime lus ernaast (tot ~25 m van het midden).
+    // Daarom verzamelen we de stukken binnen een ruimere straal, maar tellen ze enkel als de lijn ook
+    // echt tot op de rotonde zelf komt (dichtste punt binnen de straal).
+    const RR = k.R + (k.mini ? 12 : 25);
     const runs = [];
     for (let i = 0; i < pts.length - 1; i++) {
       const pr = projSeg(k.c, pts[i], pts[i + 1]);
-      if (pr.d > k.R) continue;
+      if (pr.d > RR) continue;
       const len = cum[i + 1] - cum[i];
       for (let x = 0; x <= len; x += 2) {
         const sx = cum[i] + x;
-        if (meter(k.c, puntOpS(sx)) > k.R) continue;
+        const dd = meter(k.c, puntOpS(sx));
+        if (dd > RR) continue;
         const r = runs[runs.length - 1];
-        if (r && sx - r[1] <= 12) r[1] = sx; else runs.push([sx, sx]);
+        if (r && sx - r[1] <= 12) { r[1] = sx; r[2] = Math.min(r[2], dd); } else runs.push([sx, sx, dd]);
       }
     }
-    for (const [sIn, sUit] of runs) {
+    for (const [sIn, sUit, dMin] of runs) {
+      if (dMin > k.R) continue;       // komt niet tot op de rotonde: weg die er enkel langs loopt
       if (sUit - sIn < 5) continue; // raakt de rotonde enkel even: geen doorgang
       const pIn = puntOpS(sIn), pUit = puntOpS(sUit);
       const kIn = koers360(puntOpS(Math.max(0, sIn - 15)), pIn), kUit = koers360(pUit, puntOpS(Math.min(totaal, sUit + 15)));
@@ -2517,7 +2552,7 @@ function rotPassages() {
         const d = ((aIn - aUit) % 360 + 360) % 360;
         nr = k.hoeken.filter(a => { const o = ((aIn - a) % 360 + 360) % 360; return o > 20 && o <= d + 25; }).length || null;
       }
-      _rotRit.push({ sIn, sUit, nr, kant, mini: k.mini });
+      _rotRit.push({ sIn, sUit, nr, kant, mini: k.mini, c: k.c, ring: k.ring });
     }
   }
   _rotRit.sort((a, b) => a.sIn - b.sIn);
