@@ -456,8 +456,12 @@ async function apiGereden(req, env, c) {
     const r = {
       id, naam: String(b.naam || "Route").trim().slice(0, 100) || "Route", kleur: KLEUR_OK(b.kleur), aan: true,
       km: gerKm(pts), datum: /^\d{4}-\d{2}-\d{2}/.test(String(b.datum || "")) ? String(b.datum).slice(0, 10) : "",
-      bron: b.bron === "kaart" ? "kaart" : "gpx", toegevoegd: Date.now(),
+      bron: ["kaart", "lijn"].includes(b.bron) ? b.bron : "gpx", toegevoegd: Date.now(),
     };
+    // Lijn uit Lijnkijker: lijnnummer met de kleurcode van het lijnnummer (achtergrond + tekst).
+    if (b.bron === "lijn" && b.lijn && typeof b.lijn === "object") {
+      r.lijn = { nr: String(b.lijn.nr || "").trim().slice(0, 8), bg: KLEUR_OK(b.lijn.bg), fg: /^#[0-9a-f]{6}$/i.test(String(b.lijn.fg || "")) ? String(b.lijn.fg).toLowerCase() : "#ffffff", net: String(b.lijn.net || "").slice(0, 10) };
+    }
     await c.st.setJSON(pre + "trk/" + id, pts);
     index.push(r);
     await c.st.setJSON(idxKey, index);

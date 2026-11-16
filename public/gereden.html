@@ -42,6 +42,13 @@ input[type=search], input[type=text], input[type=date] { padding:8px 10px; borde
 .leeg { padding:24px 14px; color:var(--muted); text-align:center }
 #teken { display:none; background:#fff8db; color:#3d2e00; border-bottom:1px solid #f0d88a }
 #teken.aan { display:block }
+#lijnImp { display:none } #lijnImp.aan { display:block }
+#lijnImp select { padding:8px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--fg); font:inherit }
+#lijnRes { max-height:260px; overflow:auto }
+#lijnRes .opt { display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid var(--line); cursor:pointer; font-size:14px }
+#lijnRes .opt:hover { background:var(--rij) }
+#lijnRes label.opt { cursor:default }
+.badge { display:inline-block; min-width:28px; text-align:center; padding:2px 6px; border-radius:5px; font:700 13px system-ui; flex:none; border:1px solid rgba(0,0,0,.15) }
 #teken label { display:flex; align-items:center; gap:6px; font-size:14px; margin:8px 0 }
 #melding { font-size:14px; margin-top:8px; min-height:1em }
 #melding.fout { color:var(--bad) } #melding.ok { color:var(--good) }
@@ -74,8 +81,23 @@ input[type=search], input[type=text], input[type=date] { padding:8px 10px; borde
         <label class="knop prim" for="gpxIn">📂 GPX importeren</label>
         <input type="file" id="gpxIn" accept=".gpx,application/gpx+xml" multiple hidden>
         <button id="tekenStart">✏️ Tekenen op kaart</button>
+        <button id="lijnStart">🚌 Lijn uit Lijnkijker</button>
       </div>
       <div id="melding" class="muted">Sleep GPX-bestanden op de kaart of kies ze hierboven. Je kan er meerdere tegelijk kiezen.</div>
+    </div>
+    <div class="blok" id="lijnImp">
+      <b>Lijn importeren uit Lijnkijker</b>
+      <div class="knoppen" style="margin:8px 0">
+        <select id="lijnNet"><option value="delijn">De Lijn</option><option value="tec">TEC</option><option value="mivb">MIVB</option></select>
+        <input type="search" id="lijnZoek" placeholder="Lijnnummer, bv. 80" style="flex:1;width:auto">
+      </div>
+      <div id="lijnRes"></div>
+      <div class="knoppen" style="margin-top:8px">
+        <button class="prim" id="lijnKlaar" disabled>Importeren</button>
+        <button id="lijnStop">Sluiten</button>
+      </div>
+      <details class="muted" style="margin-top:8px"><summary>Bron</summary>
+        <input type="text" id="lijnBron" style="margin-top:6px"></details>
     </div>
     <div class="blok" id="teken">
       <b>Route tekenen</b>
@@ -190,7 +212,8 @@ function tekenLijst() {
     <div class="r${r.aan ? "" : " uit"}" data-id="${r.id}">
       <input type="checkbox" class="aan" ${r.aan ? "checked" : ""} title="Tonen op de kaart">
       <input type="color" class="kleur" value="${r.kleur}" title="Kleur">
-      <div class="n"><b class="naam" title="Klik om de naam te wijzigen">${esc(r.naam)}</b><small>${r.km} km${r.datum ? " · " + esc(r.datum) : ""}${r.bron === "kaart" ? " · getekend" : ""}</small></div>
+      ${r.lijn ? `<span class="badge" style="background:${r.lijn.bg};color:${r.lijn.fg}">${esc(r.lijn.nr)}</span>` : ""}
+      <div class="n"><b class="naam" title="Klik om de naam te wijzigen">${esc(r.naam)}</b><small>${r.km} km${r.datum ? " · " + esc(r.datum) : ""}${r.bron === "kaart" ? " · getekend" : r.bron === "lijn" ? " · lijn" : ""}</small></div>
       <div class="acties"><button class="zoom" title="Inzoomen">🔍</button><button class="weg" title="Verwijderen">🗑</button></div>
     </div>`).join("");
 }
@@ -305,7 +328,7 @@ function leesGpx(tekst, bestandsnaam) {
 }
 async function voegToe(r, bron) {
   const pts = dunUit(r.pts);
-  const d = await api({ actie: "bewaar", naam: r.naam, datum: r.datum, kleur: r.kleur || volgendeKleur(), pts, bron });
+  const d = await api({ actie: "bewaar", naam: r.naam, datum: r.datum, kleur: r.kleur || volgendeKleur(), pts, bron, lijn: r.lijn });
   ROUTES.push(d.route); PUNTEN[d.route.id] = pts; tekenLijn(d.route);
   return d.route;
 }
@@ -329,6 +352,113 @@ $("gpxIn").onchange = (e) => { importeer(e.target.files); e.target.value = ""; }
 const kaartEl = $("kaart");
 kaartEl.addEventListener("dragover", (e) => { e.preventDefault(); });
 kaartEl.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) importeer(e.dataTransfer.files); });
+
+/* ---- Lijn importeren uit Lijnkijker ---- */
+// De lijnbestanden (traject + kleur) komen rechtstreeks van Lijnkijker; die site laat deze pagina ze lezen.
+const LK_STANDAARD = "https://lijnkijker.lijnkijkernet.workers.dev";
+const LK_MAP = { delijn: "gtfs", tec: "tec", mivb: "mivb" };
+$("lijnBron").value = lsGet("ger-lkbron", LK_STANDAARD);
+$("lijnBron").onchange = () => { lsSet("ger-lkbron", $("lijnBron").value.trim().replace(/\/+$/, "")); _lkIndex = {}; zoekLijn(); };
+const lkBasis = () => ($("lijnBron").value.trim() || LK_STANDAARD).replace(/\/+$/, "");
+let _lkIndex = {}, lkGekozen = null;
+async function lkJson(pad) {
+  const url = lkBasis() + pad;
+  const r = await fetch(url, { cache: "no-cache" });
+  if (!r.ok) throw new Error("Lijnkijker gaf HTTP " + r.status);
+  const t = await r.text(); const m = JSON.parse(t);
+  if (m && typeof m.split === "number" && !m.id) {   // groot bestand in stukken: de tekst exact aaneenplakken
+    const b = url.slice(0, -5);
+    const st = await Promise.all(Array.from({ length: m.split }, (_, i) => fetch(`${b}.s${i}.json`).then((x) => x.text())));
+    return JSON.parse(st.join(""));
+  }
+  return m;
+}
+async function lkIndex(net) {
+  if (!_lkIndex[net]) _lkIndex[net] = lkJson(`/${LK_MAP[net]}/index.json`).catch((e) => { delete _lkIndex[net]; throw e; });
+  return _lkIndex[net];
+}
+const hexOk = (c) => /^[0-9a-f]{6}$/i.test(String(c || ""));
+function lijnKleuren(l) {
+  const bg = hexOk(l.color) ? "#" + l.color.toLowerCase() : "#555555";
+  const fg = hexOk(l.textColor || l.tekst) ? "#" + (l.textColor || l.tekst).toLowerCase() : (() => {
+    const v = parseInt(bg.slice(1), 16), y = ((v >> 16) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000; return y > 150 ? "#000000" : "#ffffff"; })();
+  // Een witte lijn zie je niet op de kaart: neem dan de tekstkleur van het lijnnummer.
+  const lijnKleur = /^#f[0-9a-f]f[0-9a-f]f[0-9a-f]$/i.test(bg) ? fg : bg;
+  return { bg, fg, lijnKleur };
+}
+async function lkKleurenNet(net) {
+  try { return await lkJson(`/${LK_MAP[net]}/lijnen.json`); } catch { return {}; }
+}
+let _lkLijnen = {};
+async function zoekLijn() {
+  const net = $("lijnNet").value, q = $("lijnZoek").value.trim().toLowerCase();
+  lkGekozen = null; $("lijnKlaar").disabled = true;
+  if (!q) { $("lijnRes").innerHTML = `<div class="muted">Typ een lijnnummer.</div>`; return; }
+  $("lijnRes").innerHTML = `<div class="muted">Zoeken…</div>`;
+  try {
+    const [idx, kl] = await Promise.all([lkIndex(net), _lkLijnen[net] || (_lkLijnen[net] = lkKleurenNet(net))]);
+    if ($("lijnZoek").value.trim().toLowerCase() !== q || $("lijnNet").value !== net) return;
+    const opKort = {}; for (const k in kl) { const v = kl[k]; if (Array.isArray(v) && v[0] != null && !opKort[String(v[0]).toLowerCase()]) opKort[String(v[0]).toLowerCase()] = v; }
+    const hits = (idx.lijnen || []).filter((l) => String(l.short).toLowerCase() === q || String(l.short).toLowerCase().startsWith(q)).slice(0, 40)
+      .sort((a, b) => (String(a.short).toLowerCase() === q ? 0 : 1) - (String(b.short).toLowerCase() === q ? 0 : 1));
+    if (!hits.length) { $("lijnRes").innerHTML = `<div class="muted">Geen lijn gevonden.</div>`; return; }
+    $("lijnRes").innerHTML = hits.map((l) => { const v = opKort[String(l.short).toLowerCase()];
+      const bg = v && hexOk(v[1]) ? "#" + v[1] : "#555", fg = v && hexOk(v[2]) ? "#" + v[2] : "#fff";
+      return `<div class="opt" data-n="${l.n}"><span class="badge" style="background:${bg};color:${fg}">${esc(l.short)}</span><span>${esc(l.long)}</span></div>`; }).join("");
+  } catch (e) {
+    $("lijnRes").innerHTML = `<div class="fout" style="color:var(--bad)">Lijnkijker niet bereikbaar (${esc(e.message)}). Controleer het adres onder "Bron".</div>`;
+  }
+}
+async function kiesLijn(n) {
+  const net = $("lijnNet").value;
+  $("lijnRes").innerHTML = `<div class="muted">Lijn laden…</div>`;
+  try {
+    const l = await lkJson(`/${LK_MAP[net]}/l/${n}.json`);
+    const kl = (await (_lkLijnen[net] || lkKleurenNet(net)))[l.id] || null;
+    const k = lijnKleuren({ color: (kl && kl[1]) || l.color, tekst: kl && kl[2] });
+    const vars = [];
+    const gezien = new Set();
+    (l.directions || []).forEach((d, di) => (d.variants || []).forEach((v, vi) => {
+      const p = v.pts || []; if (p.length < 2) return;
+      const sig = `${di}|${v.head}|${v.stops.length}|${p.length}|${p[0]}|${p[p.length - 1]}`;   // zelfde traject, andere uren
+      if (!gezien.has(sig)) { gezien.add(sig); vars.push({ di, vi, v }); }
+    }));
+    // Per richting standaard de variant met de meeste haltes aanvinken.
+    const best = {}; for (const x of vars) if (!best[x.di] || x.v.stops.length > best[x.di].v.stops.length) best[x.di] = x;
+    lkGekozen = { l, k, vars, net };
+    $("lijnRes").innerHTML = `<div class="opt" style="cursor:default"><span class="badge" style="background:${k.bg};color:${k.fg}">${esc(l.short)}</span><b>${esc(l.long)}</b></div>` +
+      vars.map((x, i) => `<label class="opt"><input type="checkbox" data-i="${i}" ${best[x.di] === x ? "checked" : ""}> ${(l.directions.length > 1 ? `R${x.di + 1} · ` : "")}naar ${esc(x.v.head)} <span class="muted">(${x.v.stops.length} haltes)</span></label>`).join("") +
+      `<div class="muted" style="margin-top:6px"><a href="#" id="lijnTerug">← andere lijn</a></div>`;
+    $("lijnTerug").onclick = (e) => { e.preventDefault(); zoekLijn(); };
+    $("lijnKlaar").disabled = !vars.length;
+  } catch (e) { $("lijnRes").innerHTML = `<div style="color:var(--bad)">Kon de lijn niet laden (${esc(e.message)}).</div>`; }
+}
+$("lijnRes").onclick = (e) => { const o = e.target.closest(".opt[data-n]"); if (o) kiesLijn(o.dataset.n); };
+let _lzT = 0;
+$("lijnZoek").oninput = () => { clearTimeout(_lzT); _lzT = setTimeout(zoekLijn, 250); };
+$("lijnNet").onchange = zoekLijn;
+$("lijnStart").onclick = () => { $("lijnImp").classList.add("aan"); $("lijnZoek").focus(); };
+$("lijnStop").onclick = () => { $("lijnImp").classList.remove("aan"); };
+$("lijnKlaar").onclick = async () => {
+  if (!lkGekozen) return;
+  const { l, k, vars, net } = lkGekozen;
+  const keuze = [...$("lijnRes").querySelectorAll("input[data-i]:checked")].map((c) => vars[+c.dataset.i]);
+  if (!keuze.length) { melding("Vink minstens één richting aan.", "fout"); return; }
+  $("lijnKlaar").disabled = true;
+  const nieuw = [];
+  try {
+    for (const x of keuze) {
+      melding(`Importeren… ${nieuw.length + 1}/${keuze.length}`);
+      nieuw.push(await voegToe({ naam: `${l.short} naar ${x.v.head}`, datum: "", kleur: k.lijnKleur, pts: x.v.pts,
+        lijn: { nr: String(l.short), bg: k.bg, fg: k.fg, net } }, "lijn"));
+    }
+    tekenLijst();
+    const b = L.latLngBounds([]); nieuw.forEach((r) => LIJN[r.id] && b.extend(LIJN[r.id].getBounds()));
+    if (b.isValid()) kaart.fitBounds(b, { padding: [24, 24] });
+    melding(`Lijn ${l.short} toegevoegd (${nieuw.length} richting${nieuw.length > 1 ? "en" : ""}).`, "ok");
+  } catch (e) { melding(e.message, "fout"); }
+  $("lijnKlaar").disabled = false;
+};
 
 /* ---- Tekenen op de kaart ---- */
 let teken = null; // { klikken: [latlng], stukken: [[pts]], lijn, markers }
