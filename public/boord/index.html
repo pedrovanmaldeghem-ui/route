@@ -2383,18 +2383,85 @@ function puntOpS(s) {
   return pts[pts.length - 1];
 }
 
-/* ===== eenvoudige navigatie (uit de routelijn zelf) =====
-   Zoekt vanaf de huidige positie de eerstvolgende duidelijke bocht in de vormlijn en meldt de afstand
-   en de richting (links/rechts). Geen echte wegennavigatie: het volgt exact het buspad. */
+/* ===== eenvoudige navigatie (uit de routelijn zelf + rotondes uit OpenStreetMap) =====
+   Zoekt vanaf de huidige positie de eerstvolgende afslag langs het buspad en meldt de afstand en de
+   richting. Of een afslag een rotonde is, halen we uit echte kaartdata (/gtfs/rotondes.json, OSM):
+   enkel waar de route effectief door een rotonde rijdt, melden we "rotonde", met het afslagnummer.
+   Een scherpe bocht zonder rotonde blijft gewoon een bocht. */
+let ROT = null, _rotBezig = false, _rotVoor = null, _rotRit = [];
+async function laadRot() {
+  if (ROT || _rotBezig) return; _rotBezig = true;
+  try { const d = await haal("/gtfs/rotondes.json"); ROT = { r: d.r || [], m: d.m || [] }; } catch {}
+  _rotBezig = false;
+}
+const rangTekst = n => n === 1 ? "1ste" : n + "de";
+// Kompaskoers 0..360 (0 = noord, met de klok mee).
+const koers360 = (a, b) => (koers(a, b) + 360) % 360;
+// Alle doorgangen van deze rit door een rotonde: {sIn, sUit, nr, kant, mini}. Eén keer per rit berekend.
+function rotPassages() {
+  if (!ROT || !RIT || !RIT.pts || RIT.pts.length < 2 || !RIT.geo) return [];
+  if (_rotVoor === RIT) return _rotRit;
+  _rotVoor = RIT; _rotRit = [];
+  const pts = RIT.pts, cum = RIT.geo.cum, totaal = RIT.geo.totaal;
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+  for (const p of pts) { la0 = Math.min(la0, p[0]); la1 = Math.max(la1, p[0]); lo0 = Math.min(lo0, p[1]); lo1 = Math.max(lo1, p[1]); }
+  const m = 0.003, binnen = (a, b) => a >= la0 - m && a <= la1 + m && b >= lo0 - m && b <= lo1 + m;
+  const kand = [];
+  for (const r of ROT.r) if (binnen(r[0], r[1])) kand.push({ c: [r[0], r[1]], R: r[2] + 6, hoeken: r[3], mini: false });
+  for (const r of ROT.m) if (binnen(r[0], r[1])) kand.push({ c: [r[0], r[1]], R: 12, hoeken: null, mini: true });
+  for (const k of kand) {
+    // stukken van de route die dicht genoeg bij het middelpunt komen, in stapjes van 2 m afgetast
+    const runs = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const pr = projSeg(k.c, pts[i], pts[i + 1]);
+      if (pr.d > k.R) continue;
+      const len = cum[i + 1] - cum[i];
+      for (let x = 0; x <= len; x += 2) {
+        const sx = cum[i] + x;
+        if (meter(k.c, puntOpS(sx)) > k.R) continue;
+        const r = runs[runs.length - 1];
+        if (r && sx - r[1] <= 12) r[1] = sx; else runs.push([sx, sx]);
+      }
+    }
+    for (const [sIn, sUit] of runs) {
+      if (sUit - sIn < 5) continue; // raakt de rotonde enkel even: geen doorgang
+      const pIn = puntOpS(sIn), pUit = puntOpS(sUit);
+      const kIn = koers360(puntOpS(Math.max(0, sIn - 15)), pIn), kUit = koers360(pUit, puntOpS(Math.min(totaal, sUit + 15)));
+      const netto = ((kUit - kIn + 540) % 360) - 180; // + = naar rechts
+      const kant = Math.abs(netto) <= 35 ? "rechtdoor" : Math.abs(netto) >= 150 ? "terug" : (netto > 0 ? "rechts" : "links");
+      let nr = null;
+      if (k.hoeken && k.hoeken.length >= 3) { // te weinig afritten bekend: enkel de richting tonen
+        // In België rij je tegen de klok in rond: de kompashoek vanuit het middelpunt daalt. Tel de afritten
+        // tussen waar je oprijdt en waar je afrijdt (de afrit van je eigen inrit niet meegerekend).
+        const aIn = koers360(k.c, pIn), aUit = koers360(k.c, pUit);
+        const d = ((aIn - aUit) % 360 + 360) % 360;
+        nr = k.hoeken.filter(a => { const o = ((aIn - a) % 360 + 360) % 360; return o > 20 && o <= d + 25; }).length || null;
+      }
+      _rotRit.push({ sIn, sUit, nr, kant, mini: k.mini });
+    }
+  }
+  _rotRit.sort((a, b) => a.sIn - b.sIn);
+  return _rotRit;
+}
 function navInstructie(s) {
   if (s == null || !RIT || !RIT.pts || RIT.pts.length < 3) return null;
   const pts = RIT.pts, cum = RIT.geo.cum, totaal = RIT.geo.totaal;
   if (totaal - s < 40) return { einde: true };
+  if (!ROT) laadRot();
+  const pas = rotPassages();
+  // Zit je in een rotonde, of komt er een aan? (rotondes uit de kaartdata)
+  let rot = null;
+  for (const p of pas) { if (p.sUit < s) continue; rot = p; break; }
+  if (rot && rot.sIn - 5 <= s) return { rotonde: true, dist: 0, kant: rot.kant, nr: rot.nr, mini: rot.mini };
+  const inRot = sx => pas.some(p => sx >= p.sIn - 30 && sx <= p.sUit + 30);
   const latm = 111320, lonm = 111320 * Math.cos(pts[0][0] * Math.PI / 180);
   const xy = p => [p[1] * lonm, p[0] * latm];
   // huidige segmentindex (het segment waarop we rijden)
   let ci = 0; for (let i = 0; i < cum.length - 1; i++) { if (cum[i + 1] > s) { ci = i; break; } ci = i; }
+  let bocht = null;
   for (let i = Math.max(1, ci + 1); i < pts.length - 1; i++) {
+    if (rot && cum[i] > rot.sIn) break;   // de rotonde komt eerst
+    if (ROT && inRot(cum[i])) continue;  // de bochten van een rotonde zelf zijn geen afslag
     const a = xy(pts[i - 1]), b = xy(pts[i]), c = xy(pts[i + 1]);
     const ix = b[0] - a[0], iy = b[1] - a[1], ox = c[0] - b[0], oy = c[1] - b[1];
     const inl = Math.hypot(ix, iy), onl = Math.hypot(ox, oy);
@@ -2405,34 +2472,36 @@ function navInstructie(s) {
     if (ang >= 32) {
       const dist = Math.max(0, cum[i] - s);
       if (dist > 900) break; // bocht te ver weg -> voorlopig rechtdoor
-      // Rotonde? Een rotonde is een strakke boog: meerdere opeenvolgende bochtjes in dezelfde
-      // draairichting, kleine straal, over een korte afstand (geen losse scherpe hoek). We kijken vanaf
-      // deze bocht vooruit of ze zo doorloopt en melden dan "rotonde" + de kant waar je ze weer verlaat
-      // (uit je inrij- vs. uitrij-koers). Het exacte afslagnummer kan niet zonder extra kaartdata.
-      const sign0 = cross > 0 ? 1 : -1;
-      const koersIn = Math.atan2(iy, ix) * 180 / Math.PI;
-      let som = 0, aantal = 0, laatste = i, koersUit = Math.atan2(oy, ox) * 180 / Math.PI;
-      for (let k = i; k < pts.length - 1; k++) {
-        const pa = xy(pts[k - 1]), pb = xy(pts[k]), pc = xy(pts[k + 1]);
-        const vx = pb[0] - pa[0], vy = pb[1] - pa[1], wx = pc[0] - pb[0], wy = pc[1] - pb[1];
-        const vnl = Math.hypot(vx, vy), wnl = Math.hypot(wx, wy);
-        if (wnl < 2) break;
-        const cr = vx * wy - vy * wx;
-        const a2 = Math.acos(Math.max(-1, Math.min(1, (vx * wx + vy * wy) / ((vnl || 1) * (wnl || 1))))) * 180 / Math.PI;
-        if (a2 >= 12 && (cr > 0 ? 1 : -1) !== sign0) break; // andere draairichting -> boog voorbij
-        if (a2 >= 12) { som += a2; aantal++; laatste = k; koersUit = Math.atan2(wy, wx) * 180 / Math.PI; }
-        if (cum[k] - cum[i] > 130) break; // te lang voor een rotonde
+      if (!ROT) {
+        // Nog geen rotondekaart (laden mislukt): vroegere schatting uit de vorm van de lijn.
+        const sign0 = cross > 0 ? 1 : -1;
+        const koersIn = Math.atan2(iy, ix) * 180 / Math.PI;
+        let som = 0, aantal = 0, laatste = i, koersUit = Math.atan2(oy, ox) * 180 / Math.PI;
+        for (let k = i; k < pts.length - 1; k++) {
+          const pa = xy(pts[k - 1]), pb = xy(pts[k]), pc = xy(pts[k + 1]);
+          const vx = pb[0] - pa[0], vy = pb[1] - pa[1], wx = pc[0] - pb[0], wy = pc[1] - pb[1];
+          const vnl = Math.hypot(vx, vy), wnl = Math.hypot(wx, wy);
+          if (wnl < 2) break;
+          const cr = vx * wy - vy * wx;
+          const a2 = Math.acos(Math.max(-1, Math.min(1, (vx * wx + vy * wy) / ((vnl || 1) * (wnl || 1))))) * 180 / Math.PI;
+          if (a2 >= 12 && (cr > 0 ? 1 : -1) !== sign0) break;
+          if (a2 >= 12) { som += a2; aantal++; laatste = k; koersUit = Math.atan2(wy, wx) * 180 / Math.PI; }
+          if (cum[k] - cum[i] > 130) break;
+        }
+        const boog = cum[laatste] - cum[i];
+        const straal = som > 0 ? boog / (som * Math.PI / 180) : 1e9;
+        if (aantal >= 2 && som >= 60 && boog <= 130 && straal <= 45) {
+          const netto = ((koersUit - koersIn + 540) % 360) - 180;
+          const kant = Math.abs(netto) < 30 ? "rechtdoor" : (netto > 0 ? "links" : "rechts");
+          return { rotonde: true, dist, kant };
+        }
       }
-      const boog = cum[laatste] - cum[i];
-      const straal = som > 0 ? boog / (som * Math.PI / 180) : 1e9;
-      if (aantal >= 2 && som >= 60 && boog <= 130 && straal <= 45) {
-        const netto = ((koersUit - koersIn + 540) % 360) - 180;
-        const kant = Math.abs(netto) < 30 ? "rechtdoor" : (netto > 0 ? "links" : "rechts");
-        return { rotonde: true, dist, kant };
-      }
-      return { dist, kant: cross > 0 ? "links" : "rechts", scherp: ang >= 100 };
+      bocht = { dist, kant: cross > 0 ? "links" : "rechts", scherp: ang >= 100 };
+      break;
     }
   }
+  if (bocht) return bocht;
+  if (rot && rot.sIn - s <= 900) return { rotonde: true, dist: Math.max(0, rot.sIn - s), kant: rot.kant, nr: rot.nr, mini: rot.mini };
   return { rechtdoor: true };
 }
 function updateNavBanner(s) {
@@ -2443,9 +2512,11 @@ function updateNavBanner(s) {
   if (!navAan || !kaartZichtbaar || !instr || instr.rechtdoor) { baan.classList.remove("aan"); return; }
   if (instr.rotonde) {
     pijl.textContent = "⟳";
-    const r = instr.kant === "rechtdoor" ? "rechtdoor" : "er af naar " + instr.kant;
+    const naam = instr.mini ? "mini-rotonde" : "rotonde";
+    const richt = instr.kant === "rechtdoor" ? "rechtdoor" : instr.kant === "terug" ? "keren" : "naar " + instr.kant;
+    const r = instr.nr ? `${rangTekst(instr.nr)} afslag (${richt})` : (instr.kant === "rechtdoor" || instr.kant === "terug" ? richt : "er af " + richt);
     const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
-    txt.textContent = d === 0 ? ("Rotonde, " + r) : `Over ${d} m rotonde, ${r}`;
+    txt.textContent = d === 0 ? (instr.nr ? "Neem de " + r : naam[0].toUpperCase() + naam.slice(1) + ", " + r) : `Over ${d} m ${naam}, ${r}`;
   } else if (instr.einde) { pijl.textContent = "🏁"; txt.textContent = "Einde rit"; }
   else {
     const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
