@@ -406,38 +406,47 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .leaflet-bar a.mapknop .ic{width:18px;height:18px}
 .leaflet-bar a.mapknop.aan{background:var(--blauw);color:#fff}
 /* Navigatie-instructiebalk boven de kaart. */
-.navbaan{position:absolute;top:8px;left:8px;z-index:600;width:min(440px,calc(100% - 70px));
-  background:#0e1116;color:#fff;border-radius:16px;overflow:hidden;display:none;flex-direction:column;
-  box-shadow:0 4px 18px rgba(0,0,0,.55);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.navbaan{position:absolute;top:8px;left:8px;z-index:600;width:min(420px,calc(100% - 70px));
+  background:#fff;color:#15181d;border:1px solid #d0d5dd;border-radius:14px;overflow:hidden;display:none;
+  box-shadow:0 3px 14px rgba(0,0,0,.28);cursor:pointer;-webkit-tap-highlight-color:transparent;position:absolute}
 .navbaan.aan{display:flex}
-.navbaan .navhoofd{display:flex;align-items:center;gap:14px;padding:10px 16px 10px 12px}
-.navico{flex:0 0 auto;width:62px;height:62px;display:flex;align-items:center;justify-content:center}
-.navico svg{width:100%;height:100%;display:block}
-.navtekst{display:flex;flex-direction:column;min-width:0;line-height:1.1}
-.navtekst b{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
-.navtekst span{font-size:19px;font-weight:700;color:#5cc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.navtekst small{font-size:14px;font-weight:600;color:#aeb6c2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.navbaan .navvoort{height:4px;background:#1f2630}
-.navbaan .navvoort i{display:block;height:100%;width:0;background:#5cc8ff;transition:width .6s linear}
-.navbaan .navvolg{display:flex;flex-direction:column}
-.navbaan .navvolg div{display:flex;align-items:center;gap:12px;padding:6px 16px 6px 20px;font-size:16px;font-weight:700;color:#fff}
-.navbaan .navvolg div:nth-child(odd){background:#1b2028}
-.navbaan .navvolg div:nth-child(even){background:#12161c}
-.navbaan .navvolg .navico{width:30px;height:30px}
-.navbaan .navvolg b{min-width:58px;font-variant-numeric:tabular-nums}
-.navbaan .navvolg em{font-style:normal;color:#5cc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-/* Lijst met de volgende afslagen (tik op de navigatiekaart). */
-.navlijst{position:fixed;inset:0;z-index:3000;background:#000;color:#fff;display:none;flex-direction:column}
+.navbaan .navhoofd{display:flex;align-items:stretch;flex:1;min-width:0}
+.navbaan .navhoofd > .navico{flex:0 0 78px;width:78px;height:auto;min-height:78px;background:var(--blauw);padding:10px}
+.navico{display:flex;align-items:center;justify-content:center}
+.navico svg{width:100%;height:100%;display:block;max-height:58px}
+.navtekst{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:8px 14px;line-height:1.15}
+.navtekst span{order:1;font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navtekst b{order:2;font-size:30px;font-weight:800;color:var(--blauw);font-variant-numeric:tabular-nums}
+.navtekst small{order:3;font-size:13px;font-weight:600;color:#5a626e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navtekst small:not(:empty)::before{content:"H";display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;background:#ffd200;color:#15181d;font-size:11px;font-weight:800;margin-right:5px;vertical-align:1px}
+.navbaan .navvoort{position:absolute;left:78px;right:0;bottom:0;height:4px;background:transparent}
+.navbaan .navvoort i{display:block;height:100%;width:0;background:var(--oranje);transition:width .6s linear}
+.navbaan .navvolg{display:none}
+#rij.donker .navbaan{background:var(--paneel);color:var(--tekst);border-color:var(--lijn)}
+#rij.donker .navtekst b{color:#6ab0e0}
+#rij.donker .navtekst small{color:var(--muted)}
+/* Lijst met de afslagen van de rit (tik op de navigatiekaart): paneel dat onderaan openschuift. */
+.navlijst{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.45);display:none;flex-direction:column;justify-content:flex-end}
 .navlijst.aan{display:flex}
-.navlijst h3{margin:0;padding:calc(14px + env(safe-area-inset-top)) 18px 10px;font-size:15px;font-weight:700;color:#aeb6c2;letter-spacing:.4px;text-transform:uppercase}
-.navlijst ul{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
-.navlijst li{display:flex;align-items:center;gap:16px;padding:14px 18px}
-.navlijst li:nth-child(even){background:#202329}
-.navlijst li .navico{width:52px;height:52px}
-.navlijst li b{display:block;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
-.navlijst li span{display:block;font-size:19px;font-weight:700;color:#5cc8ff}
-.navlijst li small{display:block;font-size:14px;color:#aeb6c2;font-weight:600;margin-top:2px}
-.navlijst button{margin:0;padding:16px 0 calc(16px + env(safe-area-inset-bottom));background:#000;color:#fff;border:0;border-top:1px solid #222;font:inherit;font-size:20px;font-weight:800;letter-spacing:1px}
+.navlijst .navvel{background:#fff;color:#15181d;border-radius:18px 18px 0 0;max-height:78%;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+.navlijst .navkop{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;border-bottom:1px solid #e4e7ec}
+.navlijst h3{margin:0;font-size:17px;font-weight:800}
+.navlijst .navkop button{width:38px;height:38px;border-radius:50%;border:0;background:#f2f4f7;color:#15181d;font-size:20px;font-weight:700;cursor:pointer}
+.navlijst ul{list-style:none;margin:0;padding:4px 0;overflow-y:auto}
+.navlijst li{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid #f0f2f5}
+.navlijst li .navico{flex:0 0 44px;width:44px;height:44px;border-radius:10px;background:var(--blauw);padding:6px}
+.navlijst li > div{min-width:0;flex:1}
+.navlijst li span{display:block;font-size:17px;font-weight:700}
+.navlijst li small{display:block;font-size:13px;color:#5a626e;font-weight:600;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navlijst li b{flex:0 0 auto;font-size:17px;font-weight:800;color:var(--blauw);font-variant-numeric:tabular-nums}
+.navlijst li.eerst{background:#eef4fc}
+#rij.donker .navlijst .navvel{background:var(--paneel);color:var(--tekst)}
+#rij.donker .navlijst .navkop{border-color:var(--lijn)}
+#rij.donker .navlijst .navkop button{background:#223;color:var(--tekst)}
+#rij.donker .navlijst li{border-color:var(--lijn)}
+#rij.donker .navlijst li.eerst{background:#1a2433}
+#rij.donker .navlijst li b{color:#6ab0e0}
+#rij.donker .navlijst li small{color:var(--muted)}
 /* Snelheidsmeter links onderaan de kaart: huidige snelheid + de maximaal toegelaten snelheid. */
 #snelmeter{position:absolute;left:10px;bottom:12px;z-index:600;display:none;align-items:flex-end;gap:10px}
 #snelmeter.aan{display:flex}
@@ -617,7 +626,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div id="snelmeter"><div class="nu"><b id="snelNu">–</b><small>km/u</small></div><div class="max leeg" id="snelMax" title="Maximaal toegelaten snelheid (indicatief)"><b>–</b></div></div>
   </div>
   <div id="volgstrip"></div>
-  <div id="navlijst" class="navlijst"><h3>Volgende afslagen</h3><ul id="navlijstul"></ul><button type="button" id="navlijstSluit">SLUITEN</button></div>
+  <div id="navlijst" class="navlijst"><div class="navvel"><div class="navkop"><h3>Afslagen op deze rit</h3><button type="button" id="navlijstSluit" aria-label="Sluiten">✕</button></div><ul id="navlijstul"></ul></div></div>
   <div id="balkbtns">
     <button class="knop" id="btnLijst" aria-pressed="true" title="Haltes" aria-label="Haltes"><i data-ic="haltes"></i>Haltes</button>
     <button class="knop" id="btnKaart" title="Kaart" aria-label="Kaart"><i data-ic="kaart"></i>Kaart</button>
@@ -2599,7 +2608,7 @@ function navIcoon(i) {
   let g = "";
   if (!i || i.einde) g = `<path d="M14 44 V6" ${st}/><path d="M14 8 H36 L31 15 L36 22 H14 Z" fill="#fff"/>`;
   else if (i.rotonde) {
-    g = `<circle cx="24" cy="25" r="10" fill="none" stroke="#6b7280" stroke-width="5"/><path d="M24 46 V35" ${st}/>`;
+    g = `<circle cx="24" cy="25" r="10" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="5"/><path d="M24 46 V35" ${st}/>`;
     if (i.kant === "rechts") g += `<path d="M24 35 A10 10 0 0 0 34 25 H38" ${st}/>` + kop("37,17 46,25 37,33");
     else if (i.kant === "links") g += `<path d="M24 35 A10 10 0 1 1 14 25 H10" ${st}/>` + kop("11,17 2,25 11,33");
     else if (i.kant === "terug") g += `<path d="M24 35 A10 10 0 1 0 14 25 V38" ${st}/>` + kop("6,36 14,46 22,36");
@@ -2619,7 +2628,7 @@ function navTekst(i) {
     if (i.nr) return `${naam}, ${rangTekst(i.nr)} afslag`;
     return naam + ", " + (i.kant === "rechtdoor" ? "rechtdoor" : i.kant === "terug" ? "helemaal rond" : i.kant + " eraf");
   }
-  return (i.scherp ? "Scherp " : "Sla ") + i.kant + (i.scherp ? "" : "af");
+  return (i.scherp ? "Scherp " + i.kant : i.kant[0].toUpperCase() + i.kant.slice(1)) + "af";
 }
 const navAfst = m => m < 20 ? "Nu" : m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
 // Herkenningspunt: ligt er een halte van de rit vlak bij de afslag?
@@ -2627,7 +2636,7 @@ function navBij(at) {
   if (!RIT || !RIT.halten || !RIT.geo || !RIT.geo.halteS) return "";
   let best = null, bd = 80;
   RIT.geo.halteS.forEach((hs, k) => { if (hs == null) return; const d = Math.abs(hs - at); if (d < bd) { bd = d; best = RIT.halten[k]; } });
-  return best ? "bij halte " + best.naam : "";
+  return best ? best.naam : "";
 }
 let _navBegin = null;
 const NAV_VOLGEND = 0; // zoals Waze: enkel de huidige afslag; tik voor de volledige lijst
@@ -2662,13 +2671,12 @@ function updateNavBanner(s) {
 }
 function vulNavLijst(s) {
   const ul = $("navlijstul"), lijst = s == null ? [] : navLijst(s);
-  let vorige = s;
   ul.innerHTML = lijst.map((i, k) => {
-    const d = Math.max(0, i.at - vorige); vorige = i.at;
     const bij = navBij(i.at);
-    return `<li><span class="navico">${navIcoon(i)}</span><div><b>${k === 0 ? navAfst(d) : navAfst(Math.max(20, d))}</b><span>${navTekst(i)}</span>${bij ? `<small>${bij}</small>` : ""}</div></li>`;
+    return `<li class="${k === 0 ? "eerst" : ""}"><span class="navico">${navIcoon(i)}</span><div><span>${navTekst(i)}</span>${bij ? `<small>Halte ${bij}</small>` : ""}</div><b>${navAfst(Math.max(0, i.at - s))}</b></li>`;
   }).join("") || `<li><div><span>Geen afslagen meer</span></div></li>`;
 }
+$("navlijst").onclick = (e) => { if (e.target === $("navlijst")) $("navlijst").classList.remove("aan"); };
 $("navbaan").onclick = () => { if (!laatsteSnap) return; vulNavLijst(laatsteSnap.s); $("navlijst").classList.add("aan"); };
 $("navlijstSluit").onclick = () => $("navlijst").classList.remove("aan");
 
