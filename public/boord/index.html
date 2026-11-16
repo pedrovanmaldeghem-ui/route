@@ -620,7 +620,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
       <label class="dimrij"><span>Kaart</span><select id="kaartStijl" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="osm">Gedetailleerd</option><option value="rustig">Rustig (gedempte kleuren)</option><option value="grijs">Eenvoudig (lichtgrijs)</option></select></label>
       <label class="dimrij"><span>Zoom</span><select id="zoomKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="auto">Automatisch volgens snelheid</option><option value="vast">Vast (zelf zoomen)</option></select></label>
       <label class="dimrij"><span>Flitspalen</span><select id="flitsKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="aan">Tonen en waarschuwen</option><option value="kaart">Enkel op de kaart</option><option value="uit">Uit</option></select></label>
-      <p class="fpbron">Vaste flitspalen en trajectcontroles: © OpenStreetMap-bijdragers. Mobiele controles staan er niet in.</p>
+      <p class="fpbron">Vaste flitspalen en trajectcontroles: © OpenStreetMap-bijdragers, aangevuld met de lijst trajectcontroles van het Agentschap Wegen en Verkeer. Mobiele controles staan er niet in.</p>
       <label class="dimrij" id="dimRij"><span>Helderheid</span><i title="donkerder">−</i><input type="range" id="dimBalk" min="-50" max="50" step="5" value="0"><i title="lichter">+</i><b id="dimWaarde">0</b></label>
       <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
       <button class="knop" id="menuMelden"><i data-ic="bericht"></i>Probleem of suggestie melden</button>
@@ -3083,8 +3083,12 @@ async function laadFlits() {
   try {
     const d = await haal("/gtfs/flitspalen.json");
     FLITS = { p: (d.p || []).map((x, i) => ({ id: "p" + i, lat: x[0], lon: x[1], max: x[2] || 0, rood: x[3] === "r", richt: x[4] ?? null })),
-              tc: (d.tc || []).map((x, i) => ({ id: "t" + i, van: x[0], tot: x[1], max: x[2] || 0, naam: x[3] || "Trajectcontrole" })) };
-  } catch { FLITS = { p: [], tc: [] }; }
+              tc: (d.tc || []).map((x, i) => ({ id: "t" + i, van: x[0], tot: x[1], max: x[2] || 0, naam: x[3] || "Trajectcontrole" })),
+              // Trajectcontrolezones uit de AWV-lijst: de wegstukken (met dat wegnummer) waarop de controle ligt.
+              tz: (d.tz || []).map((x, i) => { const st = x[3] || []; const a = st.flat();
+                return { id: "z" + i, weg: x[0] || "", gem: x[1] || "", max: x[2] || 0, st,
+                  bb: [Math.min(...a.map(q => q[0])), Math.min(...a.map(q => q[1])), Math.max(...a.map(q => q[0])), Math.max(...a.map(q => q[1]))] }; }).filter(z => z.st.length) };
+  } catch { FLITS = { p: [], tc: [], tz: [] }; }
   _flitsBezig = false;
 }
 function flitsPos() {
@@ -3104,6 +3108,8 @@ function tekenFlits(pos) {
     _flitsLaag.addLayer(_flitsMk[c.id] = L.marker([c.lat, c.lon], { icon: flitsIcoon(c.rood ? "r" : "", FLITS_SVG), interactive: false, keyboard: false }));
   for (const t of FLITS.tc) for (const [pt, lbl, k] of [[t.van, "TC", t.id + "v"], [t.tot, "■", t.id + "e"]]) if (meter(pos, pt) < 6000)
     _flitsLaag.addLayer(_flitsMk[k] = L.marker(pt, { icon: flitsIcoon("tc", lbl), interactive: false, keyboard: false }));
+  for (const z of FLITS.tz) if (pos[0] > z.bb[0] - 0.06 && pos[0] < z.bb[2] + 0.06 && pos[1] > z.bb[1] - 0.09 && pos[1] < z.bb[3] + 0.09)
+    _flitsLaag.addLayer(L.polyline(z.st, { color: "#1d4ed8", weight: 7, opacity: .3, interactive: false }));
   _flitsLaag.addTo(kaart);
   const a = _flitsKnip; _flitsKnip = null; markeerFlits(a); // na het hertekenen opnieuw laten knipperen
 }
@@ -3181,11 +3187,39 @@ function flitsCheck() {
   for (const t of FLITS.tc) if (Math.abs(t.van[0] - pos[0]) < 0.01 && Math.abs(t.van[1] - pos[1]) < 0.015
     && (_bewHoek == null || hoekVerschil(koers(t.van, t.tot), _bewHoek) < 70)) kijk(t.id, t.van, "tc", t);
   if (_flitsTC) { markeerFlits(_flitsTC.tc.id + "e"); toonTC(_flitsTC.tc, null, meter(pos, _flitsTC.tc.tot), 0); return; }
-  if (!best) { markeerFlits(null); toonFlitsMelding(null); return; }
+  if (!best) {
+    // 3) Binnen een trajectcontrolezone (AWV): je rijdt op het wegstuk, in de richting van de weg.
+    const z = inTCZone(pos);
+    if (z) { markeerFlits(null); const mx = z.max || maxLimietVoor() || 0;
+      toonFlitsMelding("Trajectcontrole", [z.weg, z.gem].filter(Boolean).join(" · ") + (mx ? " · max. " + mx + " km/u" : ""), mx); return; }
+    markeerFlits(null); toonFlitsMelding(null); return;
+  }
   markeerFlits(best.soort === "tc" ? best.obj.id + "v" : best.obj.id);
   const o = best.obj, afst = best.d < 30 ? "nu" : "over " + Math.round(best.d / 10) * 10 + " m";
   if (best.soort === "tc") toonFlitsMelding("Trajectcontrole " + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
   else toonFlitsMelding((o.rood ? "Roodlicht-/flitscamera " : "Flitspaal ") + afst, o.max ? "Max. " + o.max + " km/u" : "", o.max);
+}
+// Ligt je positie op een wegstuk van een trajectcontrolezone (binnen 30 m) en rijd je evenwijdig met de weg?
+// Zo telt een brug of kruispunt over die weg niet mee.
+function inTCZone(pos) {
+  for (const z of FLITS.tz || []) {
+    if (pos[0] < z.bb[0] - 0.001 || pos[0] > z.bb[2] + 0.001 || pos[1] < z.bb[1] - 0.0015 || pos[1] > z.bb[3] + 0.0015) continue;
+    for (const s of z.st) for (let i = 1; i < s.length; i++) {
+      const a = s[i - 1], b = s[i];
+      if (_tzAfstand(pos, a, b) > 30) continue;
+      if (_bewHoek == null) return z;
+      const as = koers(a, b), d = hoekVerschil(as, _bewHoek);
+      if (Math.min(d, 180 - d) < 35) return z;
+    }
+  }
+  return null;
+}
+function _tzAfstand(p, a, b) {
+  const kx = 111320 * Math.cos(p[0] * Math.PI / 180), ky = 111320;
+  const ax = (a[1] - p[1]) * kx, ay = (a[0] - p[0]) * ky, bx = (b[1] - p[1]) * kx, by = (b[0] - p[0]) * ky;
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  const t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+  return Math.hypot(ax + t * dx, ay + t * dy);
 }
 // Balk = afgelegd deel (afgelegd / (afgelegd + rest in vogelvlucht)); gemiddelde = afgelegd / tijd sinds het begin.
 function toonTC(t, gem, rest, afg) {
