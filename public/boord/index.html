@@ -344,6 +344,17 @@ body.donker .aansl-knoppen .knop.grijs{background:#223; color:var(--tekst)}
 .aansl-rij.krap .am b{color:#b54708}
 .aansl-rij.weg{opacity:.45}
 .aansl-rij .vt{color:#b42318; font-weight:600}
+.aansl-rij[data-k]{cursor:pointer}
+.rit-kop{display:flex; align-items:center; gap:10px; margin:0 0 8px}
+.rit-kop .knop{padding:10px 14px; font-size:15px; font-weight:600}
+.rit-kop .rk-t{min-width:0; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.rit-h{display:grid; grid-template-columns:62px 1fr auto; gap:10px; padding:8px 2px; border-bottom:1px solid rgba(127,127,127,.18); font-size:16px; align-items:center}
+.rit-h .rt{font-weight:700; font-variant-numeric:tabular-nums}
+.rit-h .rt .vt{display:block; color:#b42318; font-size:13px; font-weight:600}
+.rit-h .rp{font-size:13px; opacity:.65; white-space:nowrap}
+.rit-h.voorbij{opacity:.45}
+.rit-h.hier{background:rgba(255,200,0,.22); border-radius:8px}
+.rit-h.weg .rn{text-decoration:line-through}
 #scoreInhoud{text-align:center; padding:6px 2px 14px}
 .score-groot{display:flex; flex-direction:column; align-items:center; gap:6px; margin:6px 0 10px}
 .score-groot .sterren{font-size:40px; line-height:1; letter-spacing:4px; color:#f0a000}
@@ -2772,7 +2783,7 @@ $("tl").addEventListener("click", e => {
    We tonen alles vanaf je verwachte aankomst daar (geplande tijd + huidige vertraging) tot een uur later,
    met per vertrek hoeveel minuten je na aankomst hebt. */
 const NETNAAM = { delijn: "De Lijn", tec: "TEC", mivb: "MIVB", nmbs: "NMBS" };
-let _aanslI = null, _aanslTimer = null, _aanslVolg = 0;
+let _aanslI = null, _aanslTimer = null, _aanslVolg = 0, _aanslLijst = [], _aanslDetail = false;
 const aanslKan = () => !!(RIT && OMLOOP && !OMLOOP.eigen && Array.isArray(RIT.halten));
 function aanslAankomst(h) {
   const nuS = Math.floor(Date.now() / 1000);
@@ -2784,7 +2795,7 @@ function aanslAankomst(h) {
 }
 function toonAansl(i) {
   const h = RIT && RIT.halten[i]; if (!h) return;
-  _aanslI = i;
+  _aanslI = i; _aanslDetail = false;
   $("aanslTitel").textContent = "Aansluitingen · " + h.naam;
   const laatste = i === RIT.halten.length - 1;
   $("aanslKnoppen").innerHTML = (laatste ? `<button class="knop" data-a="volg">Naar volgende rit</button>` : "") +
@@ -2839,7 +2850,7 @@ async function tecGepland(namen, vanS, totS) {
         if (t < vanS || t > totS) continue;
         const k = t + "|" + lj.short + "|" + v.head; if (zien.has(k)) continue; zien.add(k);
         const q = /Quai\s+(\S+)/i.exec(v.stops[si][0]);
-        uit.push({ net: "tec", lijn: lj.short || "", kleur: lj.color || "e2001a", tekst: lj.text || "ffffff", best: v.head || "", tijd: t, vertraging: null, perron: q ? q[1].replace(/^0+(?=\d)/, "") : "", halte: v.stops[si][0].replace(/\s*-\s*Quai.*$/i, ""), afst: null, geschrapt: false });
+        uit.push({ net: "tec", lijn: lj.short || "", kleur: lj.color || "e2001a", tekst: lj.text || "ffffff", best: v.head || "", tijd: t, vertraging: null, perron: q ? q[1].replace(/^0+(?=\d)/, "") : "", halte: v.stops[si][0].replace(/\s*-\s*Quai.*$/i, ""), afst: null, geschrapt: false, _v: v, _dm: dm, _si: si });
       }
     }
   }
@@ -2854,8 +2865,96 @@ function tecSamen(gepland, live) {
   }
   return gepland.length ? gepland : live;   // geen dienstregeling gevonden: dan toch de losse live doorkomsten
 }
-function sluitAansl() { $("aanslov").classList.remove("aan"); clearInterval(_aanslTimer); }
+function sluitAansl() { $("aanslov").classList.remove("aan"); clearInterval(_aanslTimer); _aanslDetail = false; }
+
+/* --- Rit-detail: alle haltes met uurregeling van één doorkomst ---
+   Trein: live van iRail. Bus/tram/metro: uit de dienstregeling (/gtfs, /tec, /mivb), de rit gezocht op het
+   geplande uur aan deze halte, met de huidige vertraging doorgetrokken vanaf hier. */
+const meterKort = (a, b, c, d) => Math.hypot((c - a) * 111320, (d - b) * 111320 * Math.cos(a * Math.PI / 180));
+const _lbCache = {};
+async function lijnBestanden(net) {
+  if (net === "delijn") { await basis(); return LIJNBESTANDEN || {}; }
+  if (!_lbCache[net]) _lbCache[net] = fetch(`/${net}/lijn-bestanden.json`, { cache: "default" }).then(r => r.json()).catch(() => ({}));
+  return _lbCache[net];
+}
+const _lfCache = {};
+function netLijnFile(net, n) { if (net === "delijn") return lijnFile(n); const k = net + "/" + n; if (!_lfCache[k]) _lfCache[k] = tecGroot(`/${net}/l/${n}.json`); return _lfCache[k]; }
+// Uur (minuten) aan elke halte van variant v voor de rit die om dm (min) vertrekt aan de eerste halte.
+function variantTijden(v, dep) {
+  const dm = _toMin(dep[0]); if (dm == null) return null;
+  const prof = v.profs && dep[2] != null ? v.profs[dep[2]] : null;
+  if (prof && prof.length === v.stops.length) return prof.map(o => dm + o);
+  const e = v.stops.find(x => x[3]); const base = e ? _toMin(e[3]) : null; if (base == null) return null;
+  return v.stops.map(x => { const m = _toMin(x[3]); return m == null ? null : m + dm - base; });
+}
+async function zoekRit(x, h) {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const mid = d0.getTime() / 1000;
+  const gepl = x.tijd - (x.vertraging || 0), venster = x.net === "mivb" ? 360 : 180;
+  if (x._v) { const tt = variantTijden(x._v, [String(Math.floor(x._dm / 60)).padStart(2, "0") + ":" + String(x._dm % 60).padStart(2, "0")]); return tt ? { v: x._v, tijden: tt, si: x._si, mid } : null; }
+  const lb = await lijnBestanden(x.net);
+  let sleutels = [];
+  if (x.net === "delijn") { const ent = (x.d0 || "")[0] || "", rest = (x.d0 || "").slice(1); sleutels = [x.d0, ent + rest.padStart(3, "0"), ent + rest.replace(/^0+/, "").padStart(3, "0")]; }
+  else if (x.net === "mivb") sleutels = [x.rid, x.lijn];
+  const idx = [...new Set(sleutels.filter(k => k && lb[k]).flatMap(k => lb[k]))];
+  const files = await Promise.all(idx.map(n => netLijnFile(x.net, n)));
+  const best = (x.best || "").toLowerCase();
+  let keuze = null, score = Infinity;
+  for (const lj of files) if (lj) for (const dr of (lj.directions || [])) for (const v of (dr.variants || [])) {
+    const st = v.stops || []; let si = -1, sd = 300;
+    for (let i = 0; i < st.length - 1; i++) { const dd = meterKort(h.lat, h.lon, st[i][1], st[i][2]); if (dd < sd) { sd = dd; si = i; } }
+    if (si < 0) continue;
+    const kop = (v.head || "").toLowerCase(), kopStraf = best && kop && !(kop.includes(best) || best.includes(kop)) ? 240 : 0;
+    for (const dep of (v.deps || [])) {
+      const tt = variantTijden(v, dep); if (!tt || tt[si] == null) continue;
+      let dt = Math.abs(mid + tt[si] * 60 - gepl); dt = Math.min(dt, Math.abs(mid + tt[si] * 60 - 86400 - gepl));
+      if (dt > venster) continue;
+      const sc = dt + kopStraf + sd;
+      if (sc < score) { score = sc; keuze = { v, tijden: tt, si, mid }; }
+    }
+  }
+  return keuze;
+}
+async function toonRit(x) {
+  const h = RIT && RIT.halten[_aanslI]; if (!h) return;
+  _aanslDetail = true;
+  const [bg, fg] = x.net === "delijn" && x.d0 && lijnKleur(x.d0) !== "#444" ? [lijnKleur(x.d0), lijnTekst(x.d0)] : x.net === "delijn" ? ["#ffd800", "#000"] : ["#" + (x.kleur || "555"), "#" + (x.tekst || "fff")];
+  const kop = `<div class="rit-kop"><button class="knop grijs" id="ritTerug">Terug</button><span class="ab" style="display:inline-block;padding:3px 7px;border-radius:6px;font-weight:700;background:${bg};color:${fg}">${esc(x.rit || x.lijn)}</span><span class="rk-t">${esc(x.best || "")}</span></div>`;
+  $("aanslInhoud").innerHTML = kop + `<p class="hint">Laden…</p>`;
+  $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); };
+  const hhmm = s => { const t = new Date(s * 1000); return String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
+  const nuS = Date.now() / 1000;
+  let rijen = null, uitleg = "";
+  try {
+    if (x.net === "nmbs") {
+      const d = await fetch(`/api/treinrit?id=${encodeURIComponent(x.vid || "")}&t=${x.tijd}`, { credentials: "same-origin", cache: "no-store" }).then(r => r.json());
+      if (d.fout) throw new Error(d.fout);
+      const hn = (x.halte || "").toLowerCase();
+      rijen = (d.stops || []).map(s => ({ naam: s.naam, tijd: s.tijd, vertraging: s.vertraging, perron: s.perron === "?" ? "" : s.perron, weg: s.geschrapt, voorbij: s.weg || s.tijd + (s.vertraging || 0) < nuS - 30, hier: s.naam.toLowerCase() === hn }));
+      uitleg = "Live van de NMBS.";
+    } else {
+      const k = await zoekRit(x, h);
+      if (k) {
+        const vt = x.vertraging || 0;
+        rijen = k.v.stops.map((s, i) => k.tijden[i] == null ? null : ({ naam: s[0], tijd: k.mid + k.tijden[i] * 60 + (k.mid + k.tijden[i] * 60 < x.tijd - (x.vertraging || 0) - 43200 ? 86400 : 0), vertraging: i >= k.si && Math.abs(vt) >= 60 ? vt : 0, perron: "", hier: i === k.si })).filter(Boolean);
+        rijen.forEach(r => { r.voorbij = r.tijd + r.vertraging < nuS - 30; });
+        uitleg = "Volgens de dienstregeling" + (Math.abs(vt) >= 60 ? ", met de huidige vertraging vanaf deze halte." : ".");
+      }
+    }
+  } catch (e) { rijen = null; }
+  if (!_aanslDetail) return;
+  if (!rijen || !rijen.length) { $("aanslInhoud").innerHTML = kop + `<p class="hint">De haltes van deze rit konden niet gevonden worden.</p>`; $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); }; return; }
+  $("aanslInhoud").innerHTML = kop + `<p class="hint">${esc(uitleg)}</p>` + rijen.map(r =>
+    `<div class="rit-h${r.hier ? " hier" : ""}${r.voorbij ? " voorbij" : ""}${r.weg ? " weg" : ""}"><span class="rt">${hhmm(r.tijd)}${r.vertraging && Math.abs(r.vertraging) >= 60 ? `<span class="vt">${r.vertraging > 0 ? "+" : ""}${Math.round(r.vertraging / 60)} min</span>` : ""}</span>` +
+    `<span class="rn">${esc(r.naam)}</span><span class="rp">${r.perron ? (x.net === "nmbs" ? "spoor " : "perron ") + esc(r.perron) : ""}</span></div>`).join("");
+  $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); };
+  const hier = $("aanslInhoud").querySelector(".rit-h.hier"); if (hier) hier.scrollIntoView({ block: "center" });
+}
+$("aanslInhoud").addEventListener("click", e => {
+  const r = e.target.closest(".aansl-rij[data-k]"); if (!r || _aanslDetail) return;
+  const x = _aanslLijst[+r.dataset.k]; if (x) toonRit(x);
+});
 async function laadAansl() {
+  if (_aanslDetail) return;
   const i = _aanslI, h = RIT && RIT.halten[i]; if (!h || h.lat == null) return;
   const nr = ++_aanslVolg, aank = aanslAankomst(h);
   const q = new URLSearchParams({ lat: h.lat, lon: h.lon, naam: h.naam || "", halte: h.id || "", t: aank });
@@ -2878,13 +2977,14 @@ async function laadAansl() {
     if (x.net === "delijn" && x.d0) { const c = lijnKleur(x.d0); if (c !== "#444") return [c, lijnTekst(x.d0)]; return ["#ffd800", "#000"]; }
     return ["#" + (x.kleur || "555"), "#" + (x.tekst || "fff")];
   };
-  let html = lijst.map(x => {
+  _aanslLijst = lijst;
+  let html = lijst.map((x, k) => {
     const marge = Math.round((x.tijd - aank) / 60), [bg, fg] = kl(x);
     const gepl = x.tijd - (x.vertraging != null && Math.abs(x.vertraging) >= 60 ? x.vertraging : 0);   // borden tonen het geplande uur + vertraging
     const vt = x.vertraging != null && Math.abs(x.vertraging) >= 60 ? ` <span class="vt">${x.vertraging > 0 ? "+" : ""}${Math.round(x.vertraging / 60)}</span>` : "";
     const sub = [NETNAAM[x.net] || x.net, x.perron ? (x.net === "nmbs" ? "spoor " : "perron ") + x.perron : "", x.net !== "delijn" && x.halte ? x.halte : "", x.afst ? x.afst + " m" : ""].filter(Boolean).join(" · ");
     const cls = x.geschrapt ? " weg" : marge < 2 ? " krap" : "";
-    return `<div class="aansl-rij${cls}"><span class="at">${x.geschrapt ? "<s>" + hhmm(gepl) + "</s>" : hhmm(gepl)}${vt}</span>` +
+    return `<div class="aansl-rij${cls}" data-k="${k}"><span class="at">${x.geschrapt ? "<s>" + hhmm(gepl) + "</s>" : hhmm(gepl)}${vt}</span>` +
       `<span class="ab" style="background:${bg};color:${fg}">${esc(x.lijn)}</span>` +
       `<span class="an">${esc(x.best || (x.geschrapt ? "" : "richting onbekend"))}${x.geschrapt ? " · afgeschaft" : ""}<small>${esc(sub)}</small></span>` +
       `<span class="am"><b>${marge <= 0 ? "meteen" : marge + " min"}</b>na aankomst</span></div>`;
@@ -2893,6 +2993,8 @@ async function laadAansl() {
   else html = `<p class="hint">Je komt hier aan rond ${hhmm(aank)}. Ververst elke 30 s.</p>` + html;
   const weg = Object.keys(d.fouten || {}).map(k => NETNAAM[k] || k);
   if (weg.length) html += `<p class="hint">Niet bereikbaar: ${esc(weg.join(", "))}.</p>`;
+  if (lijst.length) html += `<p class="hint">Tik op een vertrek voor alle haltes van die rit.</p>`;
+  if (_aanslDetail) return;   // intussen een rit geopend: de lijst niet eroverheen tekenen
   $("aanslInhoud").innerHTML = html;
 }
 $("aanslSluit").onclick = sluitAansl;
