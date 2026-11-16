@@ -406,12 +406,38 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .leaflet-bar a.mapknop .ic{width:18px;height:18px}
 .leaflet-bar a.mapknop.aan{background:var(--blauw);color:#fff}
 /* Navigatie-instructiebalk boven de kaart. */
-.navbaan{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:600;
-  background:rgba(14,17,22,.92);color:#fff;border:1px solid var(--lijn);border-radius:12px;
-  padding:9px 16px;font-size:18px;font-weight:700;display:none;align-items:center;gap:12px;
-  box-shadow:0 2px 12px rgba(0,0,0,.55);max-width:92%}
+.navbaan{position:absolute;top:8px;left:8px;z-index:600;width:min(440px,calc(100% - 70px));
+  background:#0e1116;color:#fff;border-radius:16px;overflow:hidden;display:none;flex-direction:column;
+  box-shadow:0 4px 18px rgba(0,0,0,.55);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .navbaan.aan{display:flex}
-.navbaan .pijl{font-size:26px;line-height:1}
+.navbaan .navhoofd{display:flex;align-items:center;gap:14px;padding:10px 16px 10px 12px}
+.navico{flex:0 0 auto;width:62px;height:62px;display:flex;align-items:center;justify-content:center}
+.navico svg{width:100%;height:100%;display:block}
+.navtekst{display:flex;flex-direction:column;min-width:0;line-height:1.1}
+.navtekst b{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.navtekst span{font-size:19px;font-weight:700;color:#5cc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navtekst small{font-size:14px;font-weight:600;color:#aeb6c2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.navbaan .navvoort{height:4px;background:#1f2630}
+.navbaan .navvoort i{display:block;height:100%;width:0;background:#5cc8ff;transition:width .6s linear}
+.navbaan .navvolg{display:flex;flex-direction:column}
+.navbaan .navvolg div{display:flex;align-items:center;gap:12px;padding:6px 16px 6px 20px;font-size:16px;font-weight:700;color:#fff}
+.navbaan .navvolg div:nth-child(odd){background:#1b2028}
+.navbaan .navvolg div:nth-child(even){background:#12161c}
+.navbaan .navvolg .navico{width:30px;height:30px}
+.navbaan .navvolg b{min-width:58px;font-variant-numeric:tabular-nums}
+.navbaan .navvolg em{font-style:normal;color:#5cc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Lijst met de volgende afslagen (tik op de navigatiekaart). */
+.navlijst{position:fixed;inset:0;z-index:3000;background:#000;color:#fff;display:none;flex-direction:column}
+.navlijst.aan{display:flex}
+.navlijst h3{margin:0;padding:calc(14px + env(safe-area-inset-top)) 18px 10px;font-size:15px;font-weight:700;color:#aeb6c2;letter-spacing:.4px;text-transform:uppercase}
+.navlijst ul{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
+.navlijst li{display:flex;align-items:center;gap:16px;padding:14px 18px}
+.navlijst li:nth-child(even){background:#202329}
+.navlijst li .navico{width:52px;height:52px}
+.navlijst li b{display:block;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.navlijst li span{display:block;font-size:19px;font-weight:700;color:#5cc8ff}
+.navlijst li small{display:block;font-size:14px;color:#aeb6c2;font-weight:600;margin-top:2px}
+.navlijst button{margin:0;padding:16px 0 calc(16px + env(safe-area-inset-bottom));background:#000;color:#fff;border:0;border-top:1px solid #222;font:inherit;font-size:20px;font-weight:800;letter-spacing:1px}
 /* Snelheidsmeter links onderaan de kaart: huidige snelheid + de maximaal toegelaten snelheid. */
 #snelmeter{position:absolute;left:10px;bottom:12px;z-index:600;display:none;align-items:flex-end;gap:10px}
 #snelmeter.aan{display:flex}
@@ -587,10 +613,11 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <div id="lijstwrap"><ul class="tl" id="tl"></ul></div>
     <div id="kaart"></div>
     <div class="tcbalk" id="tcBalk" title="Trajectcontrole: onder = begin, boven = einde"><i id="tcVul"></i></div>
-    <div id="navbaan" class="navbaan"><span class="pijl" id="navpijl">↑</span><span id="navtxt">–</span></div>
+    <div id="navbaan" class="navbaan" title="Tik voor de volgende afslagen"><div class="navhoofd"><span class="navico" id="navpijl"></span><div class="navtekst"><b id="navafst"></b><span id="navtxt">–</span><small id="navbij"></small></div></div><div class="navvoort"><i id="navvoort"></i></div><div class="navvolg" id="navvolg"></div></div>
     <div id="snelmeter"><div class="nu"><b id="snelNu">–</b><small>km/u</small></div><div class="max leeg" id="snelMax" title="Maximaal toegelaten snelheid (indicatief)"><b>–</b></div></div>
   </div>
   <div id="volgstrip"></div>
+  <div id="navlijst" class="navlijst"><h3>Volgende afslagen</h3><ul id="navlijstul"></ul><button type="button" id="navlijstSluit">SLUITEN</button></div>
   <div id="balkbtns">
     <button class="knop" id="btnLijst" aria-pressed="true" title="Haltes" aria-label="Haltes"><i data-ic="haltes"></i>Haltes</button>
     <button class="knop" id="btnKaart" title="Kaart" aria-label="Kaart"><i data-ic="kaart"></i>Kaart</button>
@@ -2485,7 +2512,13 @@ function rotPassages() {
   _rotRit.sort((a, b) => a.sIn - b.sIn);
   return _rotRit;
 }
-function navInstructie(s) {
+function navInstructie(s, ver = 900) {
+  const r = navInstructieRuw(s, ver);
+  if (r && r.dist != null) r.at = s + r.dist;
+  if (r && r.einde && RIT && RIT.geo) r.at = RIT.geo.totaal;
+  return r;
+}
+function navInstructieRuw(s, ver) {
   if (s == null || !RIT || !RIT.pts || RIT.pts.length < 3) return null;
   const pts = RIT.pts, cum = RIT.geo.cum, totaal = RIT.geo.totaal;
   if (totaal - s < 40) return { einde: true };
@@ -2494,7 +2527,7 @@ function navInstructie(s) {
   // Zit je in een rotonde, of komt er een aan? (rotondes uit de kaartdata)
   let rot = null;
   for (const p of pas) { if (p.sUit < s) continue; rot = p; break; }
-  if (rot && rot.sIn - 5 <= s) return { rotonde: true, dist: 0, kant: rot.kant, nr: rot.nr, mini: rot.mini };
+  if (rot && rot.sIn - 5 <= s) return { rotonde: true, dist: 0, kant: rot.kant, nr: rot.nr, mini: rot.mini, sUit: rot.sUit };
   const inRot = sx => pas.some(p => sx >= p.sIn - 30 && sx <= p.sUit + 30);
   const latm = 111320, lonm = 111320 * Math.cos(pts[0][0] * Math.PI / 180);
   const xy = p => [p[1] * lonm, p[0] * latm];
@@ -2513,7 +2546,7 @@ function navInstructie(s) {
     const ang = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
     if (ang >= 32) {
       const dist = Math.max(0, cum[i] - s);
-      if (dist > 900) break; // bocht te ver weg -> voorlopig rechtdoor
+      if (dist > ver) break; // bocht te ver weg -> voorlopig rechtdoor
       if (!ROT) {
         // Nog geen rotondekaart (laden mislukt): vroegere schatting uit de vorm van de lijn.
         const sign0 = cross > 0 ? 1 : -1;
@@ -2543,31 +2576,101 @@ function navInstructie(s) {
     }
   }
   if (bocht) return bocht;
-  if (rot && rot.sIn - s <= 900) return { rotonde: true, dist: Math.max(0, rot.sIn - s), kant: rot.kant, nr: rot.nr, mini: rot.mini };
+  if (rot && rot.sIn - s <= ver) return { rotonde: true, dist: Math.max(0, rot.sIn - s), kant: rot.kant, nr: rot.nr, mini: rot.mini, sUit: rot.sUit };
   return { rechtdoor: true };
 }
-function updateNavBanner(s) {
-  const baan = $("navbaan"), txt = $("navtxt"), pijl = $("navpijl");
-  const kaartZichtbaar = $("kaart").style.display === "block";
-  const instr = navInstructie(s);
-  // "Rechtdoor" tonen we niet meer: enkel de echte afslagen (en het einde van de rit) verschijnen.
-  if (!navAan || !kaartZichtbaar || !instr || instr.rechtdoor) { baan.classList.remove("aan"); return; }
-  if (instr.rotonde) {
-    pijl.textContent = "⟳";
-    const naam = instr.mini ? "mini-rotonde" : "rotonde";
-    const richt = instr.kant === "rechtdoor" ? "rechtdoor" : instr.kant === "terug" ? "keren" : "naar " + instr.kant;
-    const r = instr.nr ? `${rangTekst(instr.nr)} afslag (${richt})` : (instr.kant === "rechtdoor" || instr.kant === "terug" ? richt : "er af " + richt);
-    const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
-    txt.textContent = d === 0 ? (instr.nr ? "Neem de " + r : naam[0].toUpperCase() + naam.slice(1) + ", " + r) : `Over ${d} m ${naam}, ${r}`;
-  } else if (instr.einde) { pijl.textContent = "🏁"; txt.textContent = "Einde rit"; }
-  else {
-    const d = instr.dist < 20 ? 0 : Math.round(instr.dist / 10) * 10;
-    pijl.textContent = instr.kant === "links" ? "←" : "→";
-    const richt = (instr.scherp ? "scherp naar " : "naar ") + instr.kant;
-    txt.textContent = d === 0 ? ("Nu " + richt) : `Over ${d} m ${richt}`;
+// Alle volgende manoeuvres vanaf positie s (voor "Daarna" en de lijst), tot het einde van de rit.
+function navLijst(s, max = 25) {
+  const uit = []; let x = s;
+  for (let k = 0; k < 80 && uit.length < max; k++) {
+    const r = navInstructie(x, 1e9); if (!r) break;
+    if (r.rechtdoor || r.einde) { uit.push({ einde: true, at: RIT.geo.totaal }); break; }
+    const vorig = uit[uit.length - 1];
+    // Een bocht die in de lijnvorm over twee punten verdeeld zit, is één afslag.
+    if (!(vorig && !vorig.rotonde && !r.rotonde && vorig.kant === r.kant && r.at - vorig.at < 30)) uit.push(r);
+    x = r.rotonde ? (r.sUit != null ? r.sUit + 2 : r.at + 60) : r.at + 5;
   }
-  baan.classList.add("aan");
+  return uit;
 }
+// Pijlen als SVG (wit, met grijze rotondering), naar de stijl van moderne navigatie-apps.
+function navIcoon(i) {
+  const st = 'fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"';
+  const kop = (pts) => `<polygon points="${pts}" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>`;
+  let g = "";
+  if (!i || i.einde) g = `<path d="M14 44 V6" ${st}/><path d="M14 8 H36 L31 15 L36 22 H14 Z" fill="#fff"/>`;
+  else if (i.rotonde) {
+    g = `<circle cx="24" cy="25" r="10" fill="none" stroke="#6b7280" stroke-width="5"/><path d="M24 46 V35" ${st}/>`;
+    if (i.kant === "rechts") g += `<path d="M24 35 A10 10 0 0 0 34 25 H38" ${st}/>` + kop("37,17 46,25 37,33");
+    else if (i.kant === "links") g += `<path d="M24 35 A10 10 0 1 1 14 25 H10" ${st}/>` + kop("11,17 2,25 11,33");
+    else if (i.kant === "terug") g += `<path d="M24 35 A10 10 0 1 0 14 25 V38" ${st}/>` + kop("6,36 14,46 22,36");
+    else g += `<path d="M24 35 A10 10 0 0 0 24 15 V9" ${st}/>` + kop("16,10 24,1 32,10");
+    if (i.nr) g += `<text x="24" y="29.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">${i.nr}</text>`;
+  } else if (i.kant === "links" || i.kant === "rechts") {
+    g = i.scherp ? `<path d="M16 46 V15 Q16 6 24 10 L33 24" ${st}/>` + kop("40,20.5 39,35 26.4,28.9")
+                 : `<path d="M14 46 V26 Q14 14 26 14 H34" ${st}/>` + kop("33,5 44,14 33,23");
+    if (i.kant === "links") g = `<g transform="translate(48 0) scale(-1 1)">${g}</g>`;
+  } else g = `<path d="M24 46 V12" ${st}/>` + kop("15,13 24,2 33,13");
+  return `<svg viewBox="0 0 48 48" aria-hidden="true">${g}</svg>`;
+}
+function navTekst(i) {
+  if (!i || i.einde) return "Einde rit";
+  if (i.rotonde) {
+    const naam = i.mini ? "Mini-rotonde" : "Rotonde";
+    if (i.nr) return `${naam}, ${rangTekst(i.nr)} afslag`;
+    return naam + ", " + (i.kant === "rechtdoor" ? "rechtdoor" : i.kant === "terug" ? "helemaal rond" : i.kant + " eraf");
+  }
+  return (i.scherp ? "Scherp " : "Sla ") + i.kant + (i.scherp ? "" : "af");
+}
+const navAfst = m => m < 20 ? "Nu" : m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
+// Herkenningspunt: ligt er een halte van de rit vlak bij de afslag?
+function navBij(at) {
+  if (!RIT || !RIT.halten || !RIT.geo || !RIT.geo.halteS) return "";
+  let best = null, bd = 80;
+  RIT.geo.halteS.forEach((hs, k) => { if (hs == null) return; const d = Math.abs(hs - at); if (d < bd) { bd = d; best = RIT.halten[k]; } });
+  return best ? "bij halte " + best.naam : "";
+}
+let _navBegin = null;
+const NAV_VOLGEND = 0; // zoals Waze: enkel de huidige afslag; tik voor de volledige lijst
+function updateNavBanner(s) {
+  const baan = $("navbaan");
+  const kaartZichtbaar = $("kaart").style.display === "block";
+  let instr = navInstructie(s);
+  // Geen afslag binnen 900 m: toon toch de eerstvolgende (met de echte afstand), zodat de kaart blijft staan.
+  if (instr && instr.rechtdoor) instr = navLijst(s, 1)[0] || null;
+  if (instr && instr.at != null && !instr.einde) instr.dist = Math.max(0, instr.at - s);
+  if (!navAan || !kaartZichtbaar || !instr) { baan.classList.remove("aan"); _navBegin = null; return; }
+  const dist = instr.einde ? Math.max(0, RIT.geo.totaal - s) : instr.dist;
+  $("navpijl").innerHTML = navIcoon(instr);
+  $("navafst").textContent = navAfst(dist);
+  $("navtxt").textContent = navTekst(instr);
+  $("navbij").textContent = navBij(instr.at);
+  // Voortgangsbalk: hoeveel van de aanloop naar deze afslag al afgelegd is.
+  if (!_navBegin || Math.abs(_navBegin.at - instr.at) > 3) _navBegin = { at: instr.at, d0: Math.max(dist, 1) };
+  $("navvoort").style.width = Math.round(Math.max(0, Math.min(1, 1 - dist / _navBegin.d0)) * 100) + "%";
+  // De volgende afslagen (afstand telkens vanaf de vorige), zoals in een navigatie-app.
+  let html = "";
+  if (!instr.einde) {
+    let vorige = instr.at;
+    for (const n of navLijst(instr.rotonde && instr.sUit != null ? instr.sUit + 2 : instr.at + 5, NAV_VOLGEND)) {
+      html += `<div><span class="navico">${navIcoon(n)}</span><b>${navAfst(Math.max(20, n.at - vorige))}</b><em>${navTekst(n)}</em></div>`;
+      vorige = n.at;
+    }
+  }
+  $("navvolg").innerHTML = html;
+  baan.classList.add("aan");
+  if ($("navlijst").classList.contains("aan")) vulNavLijst(s);
+}
+function vulNavLijst(s) {
+  const ul = $("navlijstul"), lijst = s == null ? [] : navLijst(s);
+  let vorige = s;
+  ul.innerHTML = lijst.map((i, k) => {
+    const d = Math.max(0, i.at - vorige); vorige = i.at;
+    const bij = navBij(i.at);
+    return `<li><span class="navico">${navIcoon(i)}</span><div><b>${k === 0 ? navAfst(d) : navAfst(Math.max(20, d))}</b><span>${navTekst(i)}</span>${bij ? `<small>${bij}</small>` : ""}</div></li>`;
+  }).join("") || `<li><div><span>Geen afslagen meer</span></div></li>`;
+}
+$("navbaan").onclick = () => { if (!laatsteSnap) return; vulNavLijst(laatsteSnap.s); $("navlijst").classList.add("aan"); };
+$("navlijstSluit").onclick = () => $("navlijst").classList.remove("aan");
 
 /* ===== omleiding / routecheck ===== */
 const _omlYmd = s => { const d = String(s || "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(0, 8) : ""; };
