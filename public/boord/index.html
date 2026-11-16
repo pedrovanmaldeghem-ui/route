@@ -620,6 +620,7 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
       <label class="dimrij"><span>Kaart</span><select id="kaartStijl" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="osm">Gedetailleerd</option><option value="rustig">Rustig (gedempte kleuren)</option><option value="grijs">Eenvoudig (lichtgrijs)</option></select></label>
       <label class="dimrij"><span>Zoom</span><select id="zoomKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="auto">Automatisch volgens snelheid</option><option value="vast">Vast (zelf zoomen)</option></select></label>
       <label class="dimrij"><span>Flitspalen</span><select id="flitsKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="aan">Tonen en waarschuwen</option><option value="kaart">Enkel op de kaart</option><option value="uit">Uit</option></select></label>
+      <label class="dimrij"><span>Piep</span><select id="piepKeuze" style="flex:1;font:inherit;padding:6px;border-radius:7px"><option value="aan">Piep bij flitspaal en trajectcontrole</option><option value="uit">Geen geluid</option></select><button type="button" id="piepTest" style="font:inherit;padding:6px 10px;border-radius:7px;margin-left:6px">▶ Test</button></label>
       <p class="fpbron">Vaste flitspalen en trajectcontroles: © OpenStreetMap-bijdragers, aangevuld met de lijst trajectcontroles van het Agentschap Wegen en Verkeer. Mobiele controles staan er niet in.</p>
       <label class="dimrij" id="dimRij"><span>Helderheid</span><i title="donkerder">−</i><input type="range" id="dimBalk" min="-50" max="50" step="5" value="0"><i title="lichter">+</i><b id="dimWaarde">0</b></label>
       <button class="knop" id="menuInfo"><i data-ic="info"></i>Info &amp; disclaimer</button>
@@ -3122,17 +3123,46 @@ function markeerFlits(k) {
   zet(_flitsKnip, false); zet(k, true); _flitsKnip = k;
 }
 function hoekVerschil(a, b) { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
-let _flitsSleutel = null;
+let _flitsSleutel = null, _flitsTe = false;
+// Piep: één AudioContext, ontgrendeld bij de eerste aanraking (telefoons laten pas geluid toe na een tik).
+let _piepKeuze = "aan", _piepAC = null;
+try { _piepKeuze = localStorage.getItem("lk-boord-piep") || "aan"; } catch {}
+function piepAC() {
+  try { if (!_piepAC) _piepAC = new (window.AudioContext || window.webkitAudioContext)();
+    if (_piepAC.state === "suspended") _piepAC.resume(); } catch {}
+  return _piepAC;
+}
+["pointerdown", "touchend", "keydown"].forEach(ev => document.addEventListener(ev, piepAC, { passive: true }));
+// tonen = [[frequentie, duur in s], ...] met telkens een korte pauze ertussen.
+function piep(tonen, test) {
+  if (_piepKeuze === "uit" && !test) return;
+  const ac = piepAC(); if (!ac) return;
+  try {
+    let t = ac.currentTime + 0.02;
+    for (const [f, d] of tonen) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "square"; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+      g.gain.setValueAtTime(0.25, t + d - 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.start(t); o.stop(t + d + 0.02); t += d + 0.09;
+    }
+  } catch {}
+}
+const PIEP_NIEUW = [[1000, 0.14], [1000, 0.14]], PIEP_TE = [[1400, 0.12], [1400, 0.12], [1400, 0.12]];
 function flitsAandacht(sleutel, max, tc) {
   const rand = $("flitsrand"), m = $("meldFlits");
-  if (sleutel && sleutel !== _flitsSleutel) { // nieuwe waarschuwing: rand + melding laten pulseren, kort trillen
+  if (sleutel && sleutel !== _flitsSleutel) { // nieuwe waarschuwing: rand + melding laten pulseren, kort trillen en piepen
     for (const el of [rand, m]) { el.classList.remove("nieuw"); void el.offsetWidth; el.classList.add("nieuw"); }
     try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch {}
+    // "Einde trajectcontrole" en "nu" (zelfde sleutel als "over x m") geven geen extra piep.
+    if (!/^Einde/.test(sleutel)) piep(PIEP_NIEUW);
   }
   _flitsSleutel = sleutel;
   // Te snel? Live snelheid vanaf 1 km/u boven de limiet, of in een trajectcontrole het gemiddelde erboven.
   const te = !!sleutel && !!max && ((_snelheid != null && Math.round(_snelheid) > max) || (!!tc && tc.gem != null && tc.gem > max));
   rand.classList.toggle("te", te);
+  if (te && !_flitsTe) piep(PIEP_TE); // te snel: hogere, drievoudige piep (één keer per overschrijding)
+  _flitsTe = te;
   if (!sleutel) rand.classList.remove("nieuw");
 }
 function toonFlitsMelding(titel, sub, max, tc) {
@@ -3232,6 +3262,9 @@ $("zoomKeuze").onchange = () => {
   _zoomModus = $("zoomKeuze").value; _zoomAuto = null; _zoomExtra = 0;
   try { localStorage.setItem("lk-boord-zoom", _zoomModus); } catch {}
 };
+$("piepKeuze").value = _piepKeuze;
+$("piepKeuze").onchange = () => { _piepKeuze = $("piepKeuze").value; try { localStorage.setItem("lk-boord-piep", _piepKeuze); } catch {} };
+$("piepTest").onclick = (e) => { e.preventDefault(); piep(PIEP_NIEUW, true); setTimeout(() => piep(PIEP_TE, true), 800); };
 $("flitsKeuze").value = _flitsKeuze;
 $("flitsKeuze").onchange = () => {
   _flitsKeuze = $("flitsKeuze").value;
