@@ -395,7 +395,7 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
   display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.45)}
 #snelmeter .max b{color:#111;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
 #snelmeter .max.leeg{border-color:#888}
-/* Meer dan 3 km/u boven de limiet: het snelheidsvak wordt rood en knippert. */
+/* Vanaf 1 km/u boven de limiet: het snelheidsvak wordt rood en knippert. */
 #snelmeter.te .nu{background:#dc2626; border-color:#fecaca; animation:snelknip .7s ease-in-out infinite}
 #snelmeter.te .nu small{color:#fee2e2}
 #snelmeter.te .max{animation:maxknip .7s ease-in-out infinite}
@@ -1738,7 +1738,7 @@ function werkSnelmeterBij() {
   // Bekende limiet: gewoon verkeersbord (rode rand), niet meer het grijze 'onbekend'-bord.
   if (lim != null) { mx.style.display = ""; mx.classList.remove("leeg"); b.textContent = String(lim); }
   else { mx.style.display = "none"; }
-  $("snelmeter").classList.toggle("te", lim != null && _snelheid != null && Math.round(_snelheid) > lim + 3);
+  $("snelmeter").classList.toggle("te", lim != null && _snelheid != null && Math.round(_snelheid) > lim);
 }
 function render() {
   if (!OMLOOP || !RIT) return;
@@ -2838,8 +2838,8 @@ function flitsAandacht(sleutel, max, tc) {
     try { navigator.vibrate && navigator.vibrate([250, 120, 250]); } catch {}
   }
   _flitsSleutel = sleutel;
-  // Te snel? Live snelheid meer dan 3 km/u boven de limiet, of in een trajectcontrole het gemiddelde erboven.
-  const te = !!sleutel && !!max && ((_snelheid != null && Math.round(_snelheid) > max + 3) || (!!tc && tc.gem != null && tc.gem > max));
+  // Te snel? Live snelheid vanaf 1 km/u boven de limiet, of in een trajectcontrole het gemiddelde erboven.
+  const te = !!sleutel && !!max && ((_snelheid != null && Math.round(_snelheid) > max) || (!!tc && tc.gem != null && tc.gem > max));
   rand.classList.toggle("te", te);
   if (!sleutel) rand.classList.remove("nieuw");
 }
