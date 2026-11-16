@@ -2628,7 +2628,12 @@ async function controleerRoute(row) {
   const geraaktNog = new Set(), vervangWeg = new Set();
   for (const o of actief) {
     const haltes = o.haltes || [];
-    const nogBediend = haltes.filter(h => h.opRoute && h.nr != null && ritIds.has(String(h.nr)));
+    const opLijn = haltes.filter(h => h.opRoute && h.nr != null);
+    const nogBediend = opLijn.filter(h => ritIds.has(String(h.nr)));
+    // Raakt de omleiding vooral de andere richting? Dan delen we hoogstens één halte (een halte met hetzelfde
+    // nummer in beide richtingen, bv. een dorpsplein) terwijl de rest van de getroffen haltes niet op deze rit
+    // ligt. Geen alarm dan; de omleiding blijft wel zichtbaar onder Melding.
+    if (nogBediend.length === 1 && opLijn.length >= 3) continue;
     nogBediend.forEach(h => geraaktNog.add((h.naam || String(h.nr)).trim()));
     if (nogBediend.length) {   // rit komt door de getroffen zone → vervanghaltes zijn relevant
       haltes.filter(h => !h.opRoute && h.nr != null && !ritIds.has(String(h.nr))).forEach(h => vervangWeg.add((h.naam || String(h.nr)).trim()));
