@@ -2631,13 +2631,8 @@ function navTekst(i) {
   return (i.scherp ? "Scherp " + i.kant : i.kant[0].toUpperCase() + i.kant.slice(1)) + "af";
 }
 const navAfst = m => m < 20 ? "Nu" : m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
-// Herkenningspunt: ligt er een halte van de rit vlak bij de afslag?
-function navBij(at) {
-  if (!RIT || !RIT.halten || !RIT.geo || !RIT.geo.halteS) return "";
-  let best = null, bd = 80;
-  RIT.geo.halteS.forEach((hs, k) => { if (hs == null) return; const d = Math.abs(hs - at); if (d < bd) { bd = d; best = RIT.halten[k]; } });
-  return best ? best.naam : "";
-}
+// Geen haltenaam bij de afslagen (op vraag van de chauffeurs weggelaten).
+const navBij = () => "";
 let _navBegin = null;
 const NAV_VOLGEND = 0; // zoals Waze: enkel de huidige afslag; tik voor de volledige lijst
 function updateNavBanner(s) {
