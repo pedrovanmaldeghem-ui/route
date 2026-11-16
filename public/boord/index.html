@@ -328,6 +328,22 @@ body.donker .omlstatus.waar{color:#ffd9a8;background:rgba(232,130,12,.16)}
 .overlay.aan{display:flex}
 .blad{background:#fff; width:100%; max-height:80vh; border-radius:16px 16px 0 0; padding:14px; overflow:auto}
 .blad h3{margin:2px 0 10px; font-size:16px}
+/* Aansluitingen bij een halte */
+.aansl-knoppen{display:flex; gap:8px; margin:0 0 10px}
+.aansl-knoppen .knop{flex:1; font-size:15px; padding:12px 6px; font-weight:600}
+.aansl-knoppen .knop.grijs{background:#eef0f3; color:#15181d}
+body.donker .aansl-knoppen .knop.grijs{background:#223; color:var(--tekst)}
+.aansl-rij{display:grid; grid-template-columns:50px auto 1fr auto; gap:9px; align-items:center; padding:9px 2px; border-bottom:1px solid rgba(127,127,127,.18); font-size:16px}
+.aansl-rij .at{font-weight:700; font-variant-numeric:tabular-nums}
+.aansl-rij .at s{font-weight:400; opacity:.6}
+.aansl-rij .ab{display:inline-block; min-width:38px; text-align:center; font-weight:700; padding:3px 6px; border-radius:6px; font-size:14px}
+.aansl-rij .an{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.aansl-rij .an small{display:block; font-size:12px; opacity:.65}
+.aansl-rij .am{text-align:right; font-variant-numeric:tabular-nums; font-size:14px; white-space:nowrap}
+.aansl-rij .am b{display:block; font-size:15px}
+.aansl-rij.krap .am b{color:#b54708}
+.aansl-rij.weg{opacity:.45}
+.aansl-rij .vt{color:#b42318; font-weight:600}
 #scoreInhoud{text-align:center; padding:6px 2px 14px}
 .score-groot{display:flex; flex-direction:column; align-items:center; gap:6px; margin:6px 0 10px}
 .score-groot .sterren{font-size:40px; line-height:1; letter-spacing:4px; color:#f0a000}
@@ -623,6 +639,16 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
     <button class="knop sluit" id="omlSluit">Sluiten</button>
     <h3 id="omlTitel">Omleiding</h3>
     <div id="omlInhoud"><p class="hint">Laden…</p></div>
+  </div>
+</div>
+
+<!-- Aansluitingen bij een halte -->
+<div class="overlay" id="aanslov">
+  <div class="blad">
+    <button class="knop sluit" id="aanslSluit">Sluiten</button>
+    <h3 id="aanslTitel">Aansluitingen</h3>
+    <div id="aanslKnoppen" class="aansl-knoppen"></div>
+    <div id="aanslInhoud"><p class="hint">Laden…</p></div>
   </div>
 </div>
 
@@ -1069,6 +1095,7 @@ let laatsteSnap = null;
 let _gpsGeweigerd = false; // de chauffeur weigerde de locatietoestemming
 let laatstePos = null;  // laatst bekende ruwe GPS-positie [lat,lon], om bij een ritwissel opnieuw te snappen
 let _bewHoek = null;    // laatst bekende rijrichting (graden, 0=noord) — voor het draaien van de kaart
+let _devMin = 0;        // huidige afwijking in minuten (>0 te laat), voor de verwachte aankomst bij aansluitingen
 let _snelheid = null;   // huidige snelheid in km/u (null = nog onbekend), licht afgevlakt
 let _vorigeKmu = null;  // ruwe snelheid van de vorige fix (km/u), om versnelling/remmen te meten
 let _vorigeT = 0;       // tijdstip van de vorige GPS-fix, om snelheid uit verplaatsing te schatten
@@ -1773,6 +1800,7 @@ function render() {
   else {
     const schema = OMLOOP.vrij ? nu() : schemaOp(s, halten, halteS);
     const dev = nu() - schema; // >0 te laat, <0 te vroeg (vrije rit: altijd 0, dus wit en geen getal)
+    _devMin = dev;
     // Meting voor de ritscore: elke tik route-trouw tellen, en bij elke nieuw bereikte halte de afwijking
     // vastleggen (stiptheid per halte).
     if (_ritStat && !_legeModus) {
@@ -2123,10 +2151,11 @@ function maakKaart() {
   // Haltebolletjes wat groter (radius 11) en zonder vaste tekst op de kaart. De namen zitten in een
   // aparte laag die enkel verschijnt als de 🏷️-knop aanstaat.
   labelLaag = L.layerGroup(); _halteMk = [];
-  for (const h of RIT.halten) if (h.lat != null) {
-    _halteMk.push(L.circleMarker([h.lat, h.lon], { radius: 11, color: routeKleur(), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(kaart));
+  RIT.halten.forEach((h, hi) => { if (h.lat == null) return;
+    _halteMk.push(L.circleMarker([h.lat, h.lon], { radius: 11, color: routeKleur(), weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(kaart)
+      .on("click", () => { if (aanslKan()) toonAansl(hi); }));
     labelLaag.addLayer(L.tooltip({ permanent: true, direction: "bottom", offset: [0, 13], className: "halte-label", opacity: 1 }).setLatLng([h.lat, h.lon]).setContent(h.naam));
-  }
+  });
   if (toonLabels) labelLaag.addTo(kaart);
   // Vaste straatniveau-zoom tijdens het rijden, gecentreerd op je huidige positie. Bewust NIET via
   // fitBounds: dat hing af van de containergrootte (bij het openen soms nog 0), waardoor de kaart
@@ -2722,16 +2751,156 @@ $("menuOverzicht").onclick = () => { menuSluit(); toonOverzicht(); };
 $("menuTerug").onclick = () => { menuSluit(); stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); vrijToonLaatste(); vrijLaadLijst(); };
 $("btnLijst").onclick = () => { $("lijstwrap").style.display = ""; $("kaart").style.display = "none"; $("volgstrip").style.display = ""; $("navbaan").classList.remove("aan"); $("snelmeter").classList.remove("aan"); $("btnLijst").setAttribute("aria-pressed", "true"); $("btnKaart").setAttribute("aria-pressed", "false"); };
 $("btnKaart").onclick = () => { $("lijstwrap").style.display = "none"; $("kaart").style.display = "block"; $("volgstrip").style.display = "none"; $("snelmeter").classList.add("aan"); $("btnLijst").setAttribute("aria-pressed", "false"); $("btnKaart").setAttribute("aria-pressed", "true"); maakKaart(); setTimeout(() => kaart && kaart.invalidateSize(), 60); if (laatsteSnap) { zetMarker(); if (navAan) updateNavBanner(laatsteSnap.s); } };
+// Laatste halte van een rit (leeg of beladen) → over naar de volgende rit.
+function naarVolgendeVanLijst() {
+  if (_legeModus) { const v = _legeVolg; _legeModus = false; _legeBezig = false; if (v != null) gaNaarRit(v, true); else toonOverzicht(); return; }
+  if (OMLOOP.pendel || RITI + 1 < OMLOOP.ritten.length) { naVolgendeRit(RITI, volgendeRitIdx()); return; }
+  toast("Dit is de laatste rit van de omloop.");
+}
 $("tl").addEventListener("click", e => {
   const li = e.target.closest("li[data-i]"); if (!li) return;
   const i = +li.dataset.i;
-  // Tik op de laatste halte van een rit (leeg of beladen) → meteen over naar de volgende rit.
-  if (RIT && i === RIT.halten.length - 1) {
-    if (_legeModus) { const v = _legeVolg; _legeModus = false; _legeBezig = false; if (v != null) gaNaarRit(v, true); else toonOverzicht(); return; }
-    if (OMLOOP.pendel || RITI + 1 < OMLOOP.ritten.length) { naVolgendeRit(RITI, volgendeRitIdx()); return; }
-    toast("Dit is de laatste rit van de omloop."); return;
-  }
+  // Tik op een halte → live aansluitingen daar (De Lijn, TEC, MIVB, NMBS), met de knoppen voor je positie
+  // of de volgende rit. Eigen netten hebben geen live data: daar blijft de tik doen wat hij altijd deed.
+  if (aanslKan()) { toonAansl(i); return; }
+  if (RIT && i === RIT.halten.length - 1) { naarVolgendeVanLijst(); return; }
   kiesVertrekHalte(i);
+});
+
+/* ===== Aansluitingen bij een halte =====
+   Live vertrekken van De Lijn, TEC, MIVB en NMBS rond de halte (één oproep naar /api/aansluitingen).
+   We tonen alles vanaf je verwachte aankomst daar (geplande tijd + huidige vertraging) tot een uur later,
+   met per vertrek hoeveel minuten je na aankomst hebt. */
+const NETNAAM = { delijn: "De Lijn", tec: "TEC", mivb: "MIVB", nmbs: "NMBS" };
+let _aanslI = null, _aanslTimer = null, _aanslVolg = 0;
+const aanslKan = () => !!(RIT && OMLOOP && !OMLOOP.eigen && Array.isArray(RIT.halten));
+function aanslAankomst(h) {
+  const nuS = Math.floor(Date.now() / 1000);
+  if (!h || h.min == null || OMLOOP.vrij) return nuS;
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  let t = d.getTime() / 1000 + (h.min + Math.max(0, _devMin || 0)) * 60;
+  if (t < nuS - 43200) t += 86400;         // nachtrit: de halte ligt na middernacht
+  return Math.floor(Math.max(t, nuS));     // al voorbij: vanaf nu
+}
+function toonAansl(i) {
+  const h = RIT && RIT.halten[i]; if (!h) return;
+  _aanslI = i;
+  $("aanslTitel").textContent = "Aansluitingen · " + h.naam;
+  const laatste = i === RIT.halten.length - 1;
+  $("aanslKnoppen").innerHTML = (laatste ? `<button class="knop" data-a="volg">Naar volgende rit</button>` : "") +
+    `<button class="knop${laatste ? " grijs" : ""}" data-a="pos">Mijn positie hier</button>`;
+  $("aanslInhoud").innerHTML = h.lat == null ? `<p class="hint">Deze halte heeft geen ligging, dus geen aansluitingen.</p>` : `<p class="hint">Laden…</p>`;
+  $("aanslov").classList.add("aan");
+  if (h.lat == null) return;
+  laadAansl();
+  clearInterval(_aanslTimer);
+  _aanslTimer = setInterval(() => { if ($("aanslov").classList.contains("aan")) laadAansl(); else clearInterval(_aanslTimer); }, 30000);
+}
+// TEC: gepland bord voor de haltes in de buurt (uit /tec/l/…), met de live vertragingen erop gelegd.
+let _tecHL = null, _tecAct = null, _tecActDag = "";
+const _tecLijn = new Map();
+async function tecGroot(url) {
+  const t = await fetch(url, { cache: "default" }).then(r => r.ok ? r.text() : null).catch(() => null);
+  if (t == null) return null;
+  let m; try { m = JSON.parse(t); } catch { return null; }
+  if (m && typeof m.split === "number" && !m.id) {   // in stukken: de tekstfragmenten exact aaneenplakken
+    const b = url.slice(0, -5);
+    const st = await Promise.all(Array.from({ length: m.split }, (_, i) => fetch(`${b}.s${i}.json`, { cache: "default" }).then(r => r.ok ? r.text() : "").catch(() => "")));
+    try { return JSON.parse(st.join("")); } catch { return null; }
+  }
+  return m;
+}
+async function tecGepland(namen, vanS, totS) {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const dag = `${d0.getFullYear()}${String(d0.getMonth() + 1).padStart(2, "0")}${String(d0.getDate()).padStart(2, "0")}`;
+  if (!_tecHL) _tecHL = await fetch("/tec/halte-lijnen.json", { cache: "default" }).then(r => r.json()).catch(() => null);
+  if (!_tecHL) return [];
+  if (!_tecAct || _tecActDag !== dag) {
+    const a = await fetch("/tec/active.json", { cache: "no-cache" }).then(r => r.json()).catch(() => ({}));
+    // Is het bestand van gisteren (nog niet ververst), neem dan de diensten die vandaag als eerstvolgende dag hebben.
+    _tecAct = new Set(a.date === dag ? (a.services || []) : Object.keys(a.next || {}).filter(k => a.next[k] === dag)); _tecActDag = dag;
+  }
+  const naamSet = new Set(namen), mid = d0.getTime() / 1000;
+  const idx = [...new Set(namen.flatMap(n => _tecHL[n] || []))].slice(0, 40);
+  const files = await Promise.all(idx.map(n => { if (!_tecLijn.has(n)) _tecLijn.set(n, tecGroot(`/tec/l/${n}.json`)); return _tecLijn.get(n); }));
+  const uit = [], zien = new Set();
+  for (const lj of files) {
+    if (!lj) continue;
+    for (const dr of (lj.directions || [])) for (const v of (dr.variants || [])) {
+      const ns = (v.stops || []).length; let si = -1;
+      for (let i = 0; i < ns - 1; i++) if (naamSet.has(v.stops[i][0])) { si = i; break; }   // eindhalte telt niet (geen vertrek)
+      if (si < 0) continue;
+      const stopT = _toMin(v.stops[si][3]), eerste = (v.stops || []).find(x => x[3]), base = eerste ? _toMin(eerste[3]) : null;
+      if (stopT == null || base == null) continue;
+      for (const dep of (v.deps || [])) {
+        if (!_tecAct.has(v.svcs[dep[1]])) continue;
+        const dm = _toMin(dep[0]); if (dm == null) continue;
+        const t = mid + (stopT + dm - base) * 60;
+        if (t < vanS || t > totS) continue;
+        const k = t + "|" + lj.short + "|" + v.head; if (zien.has(k)) continue; zien.add(k);
+        const q = /Quai\s+(\S+)/i.exec(v.stops[si][0]);
+        uit.push({ net: "tec", lijn: lj.short || "", kleur: lj.color || "e2001a", tekst: lj.text || "ffffff", best: v.head || "", tijd: t, vertraging: null, perron: q ? q[1].replace(/^0+(?=\d)/, "") : "", halte: v.stops[si][0].replace(/\s*-\s*Quai.*$/i, ""), afst: null, geschrapt: false });
+      }
+    }
+  }
+  return uit;
+}
+function tecSamen(gepland, live) {
+  const vrij = live.map(x => ({ ...x, gepl: x.tijd - (x.vertraging || 0) }));
+  for (const g of gepland) {
+    let best = null, bd = 181;
+    for (const l of vrij) if (!l.op && String(l.lijn) === String(g.lijn)) { const dd = Math.abs(l.gepl - g.tijd); if (dd < bd) { bd = dd; best = l; } }
+    if (best) { best.op = true; g.vertraging = best.vertraging; g.tijd = best.tijd; }
+  }
+  return gepland.length ? gepland : live;   // geen dienstregeling gevonden: dan toch de losse live doorkomsten
+}
+function sluitAansl() { $("aanslov").classList.remove("aan"); clearInterval(_aanslTimer); }
+async function laadAansl() {
+  const i = _aanslI, h = RIT && RIT.halten[i]; if (!h || h.lat == null) return;
+  const nr = ++_aanslVolg, aank = aanslAankomst(h);
+  const q = new URLSearchParams({ lat: h.lat, lon: h.lon, naam: h.naam || "", halte: h.id || "", t: aank });
+  let d;
+  try { const r = await fetch("/api/aansluitingen?" + q, { credentials: "same-origin", cache: "no-store" }); d = await r.json(); if (!r.ok && !d.vertrek) throw new Error(d.fout || r.status); }
+  catch (e) { if (nr === _aanslVolg) $("aanslInhoud").innerHTML = `<p class="hint">Kon de aansluitingen niet laden. Controleer je verbinding.</p>`; return; }
+  if (nr !== _aanslVolg || i !== _aanslI) return;
+  if (d.tecHaltes && d.tecHaltes.namen && d.tecHaltes.namen.length) {
+    let gp = []; try { gp = await tecGepland(d.tecHaltes.namen, aank - 900, aank + 3600); } catch {}
+    if (nr !== _aanslVolg || i !== _aanslI) return;
+    gp.forEach(x => { x.afst = d.tecHaltes.afst; });
+    const tec = tecSamen(gp, (d.vertrek || []).filter(x => x.net === "tec"));
+    d.vertrek = (d.vertrek || []).filter(x => x.net !== "tec").concat(tec).sort((a, b) => a.tijd - b.tijd);
+  }
+  const row = OMLOOP && OMLOOP.ritten ? OMLOOP.ritten[RITI] : null;
+  const eigen = x => x.net === "delijn" && row && x.d0 === String(row[1] || "") && (x.best || "").toLowerCase() === String(RIT.naar || "").toLowerCase();
+  const lijst = (d.vertrek || []).filter(x => x.tijd >= aank - 60 && x.tijd <= aank + 3600 && !eigen(x)).slice(0, 40);
+  const hhmm = s => { const t = new Date(s * 1000); return String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
+  const kl = x => {
+    if (x.net === "delijn" && x.d0) { const c = lijnKleur(x.d0); if (c !== "#444") return [c, lijnTekst(x.d0)]; return ["#ffd800", "#000"]; }
+    return ["#" + (x.kleur || "555"), "#" + (x.tekst || "fff")];
+  };
+  let html = lijst.map(x => {
+    const marge = Math.round((x.tijd - aank) / 60), [bg, fg] = kl(x);
+    const gepl = x.tijd - (x.vertraging != null && Math.abs(x.vertraging) >= 60 ? x.vertraging : 0);   // borden tonen het geplande uur + vertraging
+    const vt = x.vertraging != null && Math.abs(x.vertraging) >= 60 ? ` <span class="vt">${x.vertraging > 0 ? "+" : ""}${Math.round(x.vertraging / 60)}</span>` : "";
+    const sub = [NETNAAM[x.net] || x.net, x.perron ? (x.net === "nmbs" ? "spoor " : "perron ") + x.perron : "", x.net !== "delijn" && x.halte ? x.halte : "", x.afst ? x.afst + " m" : ""].filter(Boolean).join(" · ");
+    const cls = x.geschrapt ? " weg" : marge < 2 ? " krap" : "";
+    return `<div class="aansl-rij${cls}"><span class="at">${x.geschrapt ? "<s>" + hhmm(gepl) + "</s>" : hhmm(gepl)}${vt}</span>` +
+      `<span class="ab" style="background:${bg};color:${fg}">${esc(x.lijn)}</span>` +
+      `<span class="an">${esc(x.best || (x.geschrapt ? "" : "richting onbekend"))}${x.geschrapt ? " · afgeschaft" : ""}<small>${esc(sub)}</small></span>` +
+      `<span class="am"><b>${marge <= 0 ? "meteen" : marge + " min"}</b>na aankomst</span></div>`;
+  }).join("");
+  if (!lijst.length) html = `<p class="hint">Geen vertrekken gevonden binnen een uur na je aankomst (${hhmm(aank)}).</p>`;
+  else html = `<p class="hint">Je komt hier aan rond ${hhmm(aank)}. Ververst elke 30 s.</p>` + html;
+  const weg = Object.keys(d.fouten || {}).map(k => NETNAAM[k] || k);
+  if (weg.length) html += `<p class="hint">Niet bereikbaar: ${esc(weg.join(", "))}.</p>`;
+  $("aanslInhoud").innerHTML = html;
+}
+$("aanslSluit").onclick = sluitAansl;
+$("aanslov").addEventListener("click", e => { if (e.target === $("aanslov")) sluitAansl(); });
+$("aanslKnoppen").addEventListener("click", e => {
+  const b = e.target.closest("button[data-a]"); if (!b) return;
+  const i = _aanslI; sluitAansl();
+  if (b.dataset.a === "volg") naarVolgendeVanLijst(); else kiesVertrekHalte(i);
 });
 $("btnMenu").onclick = () => menuOpen("rit");
 // --- Probleem/suggestie melden ---
