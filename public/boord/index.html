@@ -2228,7 +2228,8 @@ let _volgSeg = null, _volgLaatsteFix = 0, _volgFrameT = 0;
 // Zoomen op snelheid: traag rijden = dichtbij (straatniveau), snel = verder uitgezoomd zodat je meer
 // van de weg vooruit ziet. Rustig gehouden voor de chauffeur: de snelheid wordt over ±4 s uitgemiddeld,
 // de zoom past zich pas aan bij een duidelijk verschil (dode zone) en verloopt traag (±2,5 s).
-const ZOOM_TABEL = [[0, 17], [25, 17], [50, 16.4], [70, 15.9], [90, 15.4], [120, 15]];
+// Onder 30 km/u (kruispunten, rotondes, stelplaats) flink dichter, onder 10 km/u het dichtst.
+const ZOOM_TABEL = [[0, 18.6], [10, 18.6], [20, 18], [30, 17.5], [50, 16.4], [70, 15.9], [90, 15.4], [120, 15]];
 let _zoomModus = "auto";
 try { _zoomModus = localStorage.getItem("lk-boord-zoom") || "auto"; } catch {}
 let _zoomAuto = null, _zoomExtra = 0, _zoomSnel = null, _zoomBeweegt = false;
