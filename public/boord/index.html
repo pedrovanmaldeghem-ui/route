@@ -329,8 +329,9 @@ body.donker .omlstatus.waar{color:#ffd9a8;background:rgba(232,130,12,.16)}
 .blad{background:#fff; width:100%; max-height:80vh; border-radius:16px 16px 0 0; padding:14px; overflow:auto}
 .blad h3{margin:2px 0 10px; font-size:16px}
 /* Aansluitingen bij een halte */
-.aansl-knoppen{display:flex; gap:8px; margin:0 0 10px}
-.aansl-knoppen .knop{flex:1; font-size:15px; padding:12px 6px; font-weight:600}
+.aansl-knoppen{display:flex; gap:6px; margin:0 0 10px}
+.aansl-knoppen .knop{flex:1 1 0; min-width:0; font-size:15px; padding:12px 6px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.aansl-knoppen .knop[hidden]{display:none}
 .aansl-knoppen .knop.grijs{background:#eef0f3; color:#15181d}
 body.donker .aansl-knoppen .knop.grijs{background:#223; color:var(--tekst)}
 .aansl-rij{display:grid; grid-template-columns:50px auto 1fr auto; gap:9px; align-items:center; padding:9px 2px; border-bottom:1px solid rgba(127,127,127,.18); font-size:16px}
@@ -656,7 +657,6 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
 <!-- Aansluitingen bij een halte -->
 <div class="overlay" id="aanslov">
   <div class="blad">
-    <button class="knop sluit" id="aanslSluit">Sluiten</button>
     <h3 id="aanslTitel">Aansluitingen</h3>
     <div id="aanslKnoppen" class="aansl-knoppen"></div>
     <div id="aanslInhoud"><p class="hint">Laden…</p></div>
@@ -2798,8 +2798,11 @@ function toonAansl(i) {
   _aanslI = i; _aanslDetail = false;
   $("aanslTitel").textContent = "Aansluitingen · " + h.naam;
   const laatste = i === RIT.halten.length - 1;
-  $("aanslKnoppen").innerHTML = (laatste ? `<button class="knop" data-a="volg">Naar volgende rit</button>` : "") +
-    `<button class="knop${laatste ? " grijs" : ""}" data-a="pos">Mijn positie hier</button>`;
+  // Eén rij knoppen: Terug (enkel in het rit-detail), de acties voor deze halte en Sluiten.
+  $("aanslKnoppen").innerHTML = `<button class="knop grijs" data-a="terug" hidden>Terug</button>` +
+    (laatste ? `<button class="knop" data-a="volg">Volgende rit</button>` : "") +
+    `<button class="knop${laatste ? " grijs" : ""}" data-a="pos">Positie hier</button>` +
+    `<button class="knop grijs" data-a="sluit">Sluiten</button>`;
   $("aanslInhoud").innerHTML = h.lat == null ? `<p class="hint">Deze halte heeft geen ligging, dus geen aansluitingen.</p>` : `<p class="hint">Laden…</p>`;
   $("aanslov").classList.add("aan");
   if (h.lat == null) return;
@@ -2865,6 +2868,9 @@ function tecSamen(gepland, live) {
   }
   return gepland.length ? gepland : live;   // geen dienstregeling gevonden: dan toch de losse live doorkomsten
 }
+// In het rit-detail enkel Terug en Sluiten; in de lijst de acties voor deze halte en Sluiten. Zo past alles op één rij.
+function terugKnop(aan) { $("aanslKnoppen").querySelectorAll("button[data-a]").forEach(k => { const a = k.dataset.a; if (a !== "sluit") k.hidden = a === "terug" ? !aan : aan; }); }
+function terugNaarLijst() { _aanslDetail = false; terugKnop(false); $("aanslInhoud").innerHTML = `<p class="hint">Laden…</p>`; laadAansl(); }
 function sluitAansl() { $("aanslov").classList.remove("aan"); clearInterval(_aanslTimer); _aanslDetail = false; }
 
 /* --- Rit-detail: alle haltes met uurregeling van één doorkomst ---
@@ -2918,9 +2924,9 @@ async function toonRit(x) {
   const h = RIT && RIT.halten[_aanslI]; if (!h) return;
   _aanslDetail = true;
   const [bg, fg] = x.net === "delijn" && x.d0 && lijnKleur(x.d0) !== "#444" ? [lijnKleur(x.d0), lijnTekst(x.d0)] : x.net === "delijn" ? ["#ffd800", "#000"] : ["#" + (x.kleur || "555"), "#" + (x.tekst || "fff")];
-  const kop = `<div class="rit-kop"><button class="knop grijs" id="ritTerug">Terug</button><span class="ab" style="display:inline-block;padding:3px 7px;border-radius:6px;font-weight:700;background:${bg};color:${fg}">${esc(x.rit || x.lijn)}</span><span class="rk-t">${esc(x.best || "")}</span></div>`;
+  const kop = `<div class="rit-kop"><span class="ab" style="display:inline-block;padding:3px 7px;border-radius:6px;font-weight:700;background:${bg};color:${fg}">${esc(x.rit || x.lijn)}</span><span class="rk-t">${esc(x.best || "")}</span></div>`;
   $("aanslInhoud").innerHTML = kop + `<p class="hint">Laden…</p>`;
-  $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); };
+  terugKnop(true);
   const hhmm = s => { const t = new Date(s * 1000); return String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
   const nuS = Date.now() / 1000;
   let rijen = null, uitleg = "";
@@ -2942,11 +2948,10 @@ async function toonRit(x) {
     }
   } catch (e) { rijen = null; }
   if (!_aanslDetail) return;
-  if (!rijen || !rijen.length) { $("aanslInhoud").innerHTML = kop + `<p class="hint">De haltes van deze rit konden niet gevonden worden.</p>`; $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); }; return; }
+  if (!rijen || !rijen.length) { $("aanslInhoud").innerHTML = kop + `<p class="hint">De haltes van deze rit konden niet gevonden worden.</p>`; return; }
   $("aanslInhoud").innerHTML = kop + `<p class="hint">${esc(uitleg)}</p>` + rijen.map(r =>
     `<div class="rit-h${r.hier ? " hier" : ""}${r.voorbij ? " voorbij" : ""}${r.weg ? " weg" : ""}"><span class="rt">${hhmm(r.tijd)}${r.vertraging && Math.abs(r.vertraging) >= 60 ? `<span class="vt">${r.vertraging > 0 ? "+" : ""}${Math.round(r.vertraging / 60)} min</span>` : ""}</span>` +
     `<span class="rn">${esc(r.naam)}</span><span class="rp">${r.perron ? (x.net === "nmbs" ? "spoor " : "perron ") + esc(r.perron) : ""}</span></div>`).join("");
-  $("ritTerug").onclick = () => { _aanslDetail = false; laadAansl(); };
   const hier = $("aanslInhoud").querySelector(".rit-h.hier"); if (hier) hier.scrollIntoView({ block: "center" });
 }
 $("aanslInhoud").addEventListener("click", e => {
@@ -2997,12 +3002,13 @@ async function laadAansl() {
   if (_aanslDetail) return;   // intussen een rit geopend: de lijst niet eroverheen tekenen
   $("aanslInhoud").innerHTML = html;
 }
-$("aanslSluit").onclick = sluitAansl;
 $("aanslov").addEventListener("click", e => { if (e.target === $("aanslov")) sluitAansl(); });
 $("aanslKnoppen").addEventListener("click", e => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
+  const a = b.dataset.a;
+  if (a === "terug") { terugNaarLijst(); return; }
   const i = _aanslI; sluitAansl();
-  if (b.dataset.a === "volg") naarVolgendeVanLijst(); else kiesVertrekHalte(i);
+  if (a === "volg") naarVolgendeVanLijst(); else if (a === "pos") kiesVertrekHalte(i);
 });
 $("btnMenu").onclick = () => menuOpen("rit");
 // --- Probleem/suggestie melden ---
