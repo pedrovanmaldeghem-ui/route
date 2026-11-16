@@ -2628,10 +2628,17 @@ async function controleerRoute(row) {
   const geraaktNog = new Set(), vervangWeg = new Set();
   for (const o of actief) {
     const haltes = o.haltes || [];
-    const nogBediend = haltes.filter(h => h.opRoute && h.nr != null && ritIds.has(String(h.nr)));
+    // De Lijns eigen indeling (soort) gaat voor; zonder die indeling: op de normale lijn = afgeschaft,
+    // niet op de lijn = vervanghalte. Een vervanghalte die op je route ligt (bv. Nieuwerkerken Dorp) is dus géén alarm.
+    const isWeg = h => h.soort ? h.soort === "weg" : h.opRoute;
+    const nogBediend = haltes.filter(h => isWeg(h) && h.nr != null && ritIds.has(String(h.nr)));
+    // Zonder De Lijns indeling: rijdt deze rit al om de meeste geraakte haltes heen, dan zit de omleiding al in de
+    // dienstregeling en is de overlap een vervanghalte (zoals Nieuwerkerken Dorp bij lijn 80). Geen alarm dan.
+    const opLijn = haltes.filter(h => h.opRoute && h.nr != null);
+    if (!haltes.some(h => h.soort) && opLijn.length >= 3 && nogBediend.length * 2 < opLijn.length) continue;
     nogBediend.forEach(h => geraaktNog.add((h.naam || String(h.nr)).trim()));
     if (nogBediend.length) {   // rit komt door de getroffen zone → vervanghaltes zijn relevant
-      haltes.filter(h => !h.opRoute && h.nr != null && !ritIds.has(String(h.nr))).forEach(h => vervangWeg.add((h.naam || String(h.nr)).trim()));
+      haltes.filter(h => !isWeg(h) && h.nr != null && !ritIds.has(String(h.nr))).forEach(h => vervangWeg.add((h.naam || String(h.nr)).trim()));
     }
   }
   if (!geraaktNog.size && !vervangWeg.size) { _rwVerberg(); return; }
@@ -2689,8 +2696,9 @@ async function toonOmleiding() {
       const n = haltesRij(alle);
       return n.length ? `<div class="omlhaltes betrokken"><span class="hl-lab">Betrokken haltes</span>${n.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>` : "";
     }
-    const ger = haltesRij(alle.filter(h => h.opRoute));
-    const ver = haltesRij(alle.filter(h => !h.opRoute));
+    const weg = h => h.soort ? h.soort === "weg" : h.opRoute;   // De Lijns eigen indeling gaat voor
+    const ger = haltesRij(alle.filter(weg));
+    const ver = haltesRij(alle.filter(h => !weg(h)));
     let b = "";
     if (ger.length) b += `<div class="omlhaltes geraakt"><span class="hl-lab">⛔ Geraakte haltes <span class="hl-sub">(mogelijk afgeschaft)</span></span>${ger.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>`;
     if (ver.length) b += `<div class="omlhaltes vervang"><span class="hl-lab">➕ Vervang-/tijdelijke haltes</span>${ver.map(x => `<span class="hl-h">${esc(x)}</span>`).join("")}</div>`;
