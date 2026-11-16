@@ -406,7 +406,7 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .leaflet-bar a.mapknop .ic{width:18px;height:18px}
 .leaflet-bar a.mapknop.aan{background:var(--blauw);color:#fff}
 /* Navigatie-instructiebalk boven de kaart. */
-.navbaan{position:absolute;top:8px;left:8px;z-index:600;width:min(420px,calc(100% - 70px));
+.navbaan{position:absolute;top:8px;right:8px;left:auto;z-index:600;width:min(420px,calc(100% - 80px));
   background:#fff;color:#15181d;border:1px solid #d0d5dd;border-radius:14px;overflow:hidden;display:none;
   box-shadow:0 3px 14px rgba(0,0,0,.28);cursor:pointer;-webkit-tap-highlight-color:transparent;position:absolute}
 .navbaan.aan{display:flex}
@@ -422,6 +422,8 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .navbaan .navvoort{position:absolute;left:78px;right:0;bottom:0;height:4px;background:transparent}
 .navbaan .navvoort i{display:block;height:100%;width:0;background:var(--oranje);transition:width .6s linear}
 .navbaan .navvolg{display:none}
+/* Rechts staat tijdens een trajectcontrole de voortgangsbalk: dan wat ruimte laten. */
+#rij.tcaan .navbaan{right:34px;width:min(420px,calc(100% - 106px))}
 #rij.donker .navbaan{background:var(--paneel);color:var(--tekst);border-color:var(--lijn)}
 #rij.donker .navtekst b{color:#6ab0e0}
 #rij.donker .navtekst small{color:var(--muted)}
@@ -2608,12 +2610,13 @@ function navIcoon(i) {
   let g = "";
   if (!i || i.einde) g = `<path d="M14 44 V6" ${st}/><path d="M14 8 H36 L31 15 L36 22 H14 Z" fill="#fff"/>`;
   else if (i.rotonde) {
-    g = `<circle cx="24" cy="25" r="10" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="5"/><path d="M24 46 V35" ${st}/>`;
-    if (i.kant === "rechts") g += `<path d="M24 35 A10 10 0 0 0 34 25 H38" ${st}/>` + kop("37,17 46,25 37,33");
-    else if (i.kant === "links") g += `<path d="M24 35 A10 10 0 1 1 14 25 H10" ${st}/>` + kop("11,17 2,25 11,33");
-    else if (i.kant === "terug") g += `<path d="M24 35 A10 10 0 1 0 14 25 V38" ${st}/>` + kop("6,36 14,46 22,36");
-    else g += `<path d="M24 35 A10 10 0 0 0 24 15 V9" ${st}/>` + kop("16,10 24,1 32,10");
-    if (i.nr) g += `<text x="24" y="29.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">${i.nr}</text>`;
+    // Rotonde: grote ring (tegen de klok in, zoals in België), het gereden stuk wit, de rest doorschijnend.
+    g = `<circle cx="24" cy="24" r="11" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="5"/><path d="M24 47 V35" ${st}/>`;
+    if (i.kant === "rechts") g += `<path d="M24 35 A11 11 0 0 0 35 24 H39" ${st}/>` + kop("38,16.5 47,24 38,31.5");
+    else if (i.kant === "links") g += `<path d="M24 35 A11 11 0 1 0 13 24 H9" ${st}/>` + kop("10,16.5 1,24 10,31.5");
+    else if (i.kant === "terug") g += `<path d="M24 35 A11 11 0 1 0 16.2 31.8 L16.2 37" ${st}/>` + kop("9,37 16.2,46.5 23.4,37");
+    else g += `<path d="M24 35 A11 11 0 0 0 24 13 V11" ${st}/>` + kop("16,11.5 24,1.5 32,11.5");
+    if (i.nr) g += `<text x="24" y="28.5" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">${i.nr}</text>`;
   } else if (i.kant === "links" || i.kant === "rechts") {
     g = i.scherp ? `<path d="M16 46 V15 Q16 6 24 10 L33 24" ${st}/>` + kop("40,20.5 39,35 26.4,28.9")
                  : `<path d="M14 46 V26 Q14 14 26 14 H34" ${st}/>` + kop("33,5 44,14 33,23");
