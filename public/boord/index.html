@@ -2216,7 +2216,7 @@ function maakKaart() {
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
   // Brede baan zoals Waze: een donkere rand eronder en de route zelf zo breed als de weg (zie zetBaanBreedte).
   if (!RIT.enkelDoel) {
-    randLaag = L.polyline(tekenPts(), { color: "#0b2a5b", weight: 13, opacity: .55, interactive: false, lineJoin: "round" }).addTo(kaart);
+    randLaag = L.polyline(tekenPts(), { color: "#0b2a5b", weight: 13, opacity: .4, interactive: false, lineJoin: "round" }).addTo(kaart);
     laag = L.polyline(tekenPts(), { color: routeKleur(), weight: 9, opacity: 1, lineJoin: "round" }).addTo(kaart);
   }
   if (!ROT) laadRot();
@@ -2564,11 +2564,19 @@ function kaartMpp() {
 // Baan zo breed als een gewone weg (± 9 m), met minimum en maximum in pixels.
 function zetBaanBreedte() {
   if (!kaart) return;
-  const w = Math.max(9, Math.min(46, 9 / kaartMpp()));
+  // Max 22 px: van dichtbij bleef de baan anders meegroeien tot een dikke balk die de weg bedekt.
+  const mpp = kaartMpp(), w = Math.max(8, Math.min(22, 7 / mpp));
   if (laag) laag.setStyle({ weight: w });
-  if (randLaag) randLaag.setStyle({ weight: w + 5 });
+  if (randLaag) randLaag.setStyle({ weight: w + 3 });
   if (gedaanLaag) gedaanLaag.setStyle({ weight: w });
-  if (pijlLaag) pijlLaag.eachLayer(l => { if (l._pijl === "rand") l.setStyle({ weight: w * .55 + 4 }); else if (l._pijl === "steel") l.setStyle({ weight: w * .55 }); });
+  if (pijlLaag) pijlLaag.eachLayer(l => {
+    if (l._pijl === "rand") l.setStyle({ weight: w * .45 + 3 });
+    else if (l._pijl === "steel") l.setStyle({ weight: w * .45 });
+    else if (l._kop) { // pijlpunt in schermpixels (± 1,1× de baanbreedte), dus van dichtbij niet reusachtig
+      const { tip, hk } = l._kop, m = w * 1.1 * mpp;
+      l.setLatLngs([puntVanuit(tip[0], tip[1], hk - 90, m * .8), puntVanuit(tip[0], tip[1], hk, m), puntVanuit(tip[0], tip[1], hk + 90, m * .8)]);
+    }
+  });
 }
 // Volgmodus: kaart gekanteld zoals Waze/Google Maps; vrij bewegen: plat (dan kloppen tikken en slepen).
 function zetKantel() {
@@ -2617,8 +2625,8 @@ function tekenPijlen() {
     const kop = [l, top, rr];
     const randL = L.polyline(steel, { color: "#0b2a5b", opacity: .6, weight: 8, lineCap: "butt", lineJoin: "round", interactive: false }); randL._pijl = "rand";
     const st = L.polyline(steel, { color: "#fff", opacity: 1, weight: 4, lineCap: "butt", lineJoin: "round", interactive: false }); st._pijl = "steel";
-    pijlLaag.addLayer(randL).addLayer(st)
-      .addLayer(L.polygon(kop, { color: "#0b2a5b", weight: 2, opacity: .6, fillColor: "#fff", fillOpacity: 1, interactive: false }));
+    const kp = L.polygon(kop, { color: "#0b2a5b", weight: 2, opacity: .6, fillColor: "#fff", fillOpacity: 1, interactive: false }); kp._kop = { tip, hk };
+    pijlLaag.addLayer(randL).addLayer(st).addLayer(kp);
   }
   zetBaanBreedte();
 }
