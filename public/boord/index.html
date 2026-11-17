@@ -153,7 +153,12 @@ body.donker .goed{color:#b6f0bd}
 #tp .tpt{font-size:20px; flex:none; min-width:60px; font-variant-numeric:tabular-nums} #tp .tpn{font-size:20px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #body{flex:1; min-height:0; position:relative}
 #lijstwrap{position:absolute; inset:0; overflow:auto; background:#fff; color:#15181d}
-#kaart{position:absolute; inset:0; display:none}
+#kaart{position:absolute; inset:0; display:none; overflow:hidden}
+/* De kaart zelf zit in #kaartvlak; de knoppen staan erbuiten, zodat die niet mee kantelen.
+   Gekanteld (volgmodus): het vlak is groter dan het scherm en kantelt naar achter, zoals Waze. */
+#kaartvlak{position:absolute; inset:0}
+#kaartvlak.kantel{top:-150%; left:-60%; right:-60%; transform-origin:50% 100%}
+
 /* Ruime ondermarge zodat ook de laatste halte helemaal naar boven kan scrollen (zie schuifLijst). */
 .tl{list-style:none; margin:0; padding:6px 0 60vh}
 .tl li{display:flex; align-items:center; gap:12px; padding:9px 14px; border-left:4px solid #d0d5dd; margin-left:18px; position:relative}
@@ -450,8 +455,13 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 #rij.donker .navlijst li b{color:#6ab0e0}
 #rij.donker .navlijst li small{color:var(--muted)}
 /* Snelheidsmeter links onderaan de kaart: huidige snelheid + de maximaal toegelaten snelheid. */
-#snelmeter{position:absolute;left:10px;bottom:12px;z-index:600;display:none;align-items:flex-end;gap:10px}
+#snelmeter{position:absolute;left:10px;bottom:8px;z-index:600;display:none;align-items:flex-end;gap:10px}
 #snelmeter.aan{display:flex}
+/* Huidige straat onderaan, zoals in navigatie-apps (enkel als de route straatnamen heeft). */
+#straatnu{position:absolute;left:10px;right:10px;bottom:8px;z-index:600;display:none;justify-content:center;pointer-events:none}
+#straatnu.aan{display:flex}
+#straatnu span{background:rgba(14,17,22,.85);color:#fff;font-weight:700;font-size:14px;padding:5px 11px;border-radius:9px;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 #snelmeter .nu{background:rgba(14,17,22,.92);color:#fff;border:1px solid var(--lijn);border-radius:12px;
   padding:7px 12px;box-shadow:0 2px 12px rgba(0,0,0,.55);text-align:center;line-height:1}
 #snelmeter .nu b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;display:block}
@@ -622,9 +632,10 @@ try { const q = new URLSearchParams(location.search); if (q.get("route") || q.ge
   <div id="tp"><span class="tpt" id="tptijd">--:--</span><span class="tpn" id="tpnaam">–</span></div>
   <div id="body">
     <div id="lijstwrap"><ul class="tl" id="tl"></ul></div>
-    <div id="kaart"></div>
+    <div id="kaart"><div id="kaartvlak"></div></div>
     <div class="tcbalk" id="tcBalk" title="Trajectcontrole: onder = begin, boven = einde"><i id="tcVul"></i></div>
     <div id="navbaan" class="navbaan" title="Tik voor de volgende afslagen"><div class="navhoofd"><span class="navico" id="navpijl"></span><div class="navtekst"><b id="navafst"></b><span id="navtxt">–</span><small id="navbij"></small></div></div><div class="navvoort"><i id="navvoort"></i></div><div class="navvolg" id="navvolg"></div></div>
+    <div id="straatnu"></div>
     <div id="snelmeter"><div class="nu"><b id="snelNu">–</b><small>km/u</small></div><div class="max leeg" id="snelMax" title="Maximaal toegelaten snelheid (indicatief)"><b>–</b></div></div>
   </div>
   <div id="volgstrip"></div>
@@ -1591,7 +1602,7 @@ function tikPauze() {
 
 /* ===== rijscherm ===== */
 const RIJZOOM = 17;    // vaste straatniveau-zoom waarop de kaart opent (hoger = dichterbij)
-let kaart = null, laag = null, marker = null, gedaanLaag = null;
+let kaart = null, laag = null, marker = null, gedaanLaag = null, randLaag = null, pijlLaag = null;
 // Beginpositie van een pas geselecteerde rit: s op de eerste halte (rit start daar). De bol staat op je
 // echte GPS-locatie als die al bekend is, anders op de eerste halte tot er een fix is.
 function startSnap() {
@@ -1622,7 +1633,7 @@ function startRijden() {
   // anders blijft de live-bol aan de weggegooide kaart hangen en zie je hem niet meer na een ritwissel.
   const kaartOpen = $("kaart").style.display === "block";
   if (kaart) { try { kaart.remove(); } catch {} }
-  kaart = laag = marker = gedaanLaag = null; _flitsLaag = null; _flitsMid = null;
+  kaart = laag = marker = gedaanLaag = randLaag = pijlLaag = null; _flitsLaag = null; _flitsMid = null;
   // Een pas geselecteerde rit start bij de eerste halte. De bol toont je echte GPS-locatie zodra er
   // een fix is; sta je nog ver van de route, dan blijft de schema-positie op halte 1 staan.
   laatsteSnap = startSnap();
@@ -2193,15 +2204,26 @@ function maakKaart() {
   if (kaart || !RIT || (!RIT.pts.length && !RIT.enkelDoel)) return;
   const c0 = RIT.enkelDoel ? RIT.doel : [RIT.pts[0][0], RIT.pts[0][1]];
   // touchRotate aan: in vrije modus mag de chauffeur de kaart zelf draaien (twee vingers).
-  kaart = L.map("kaart", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0, zoomSnap: 0, zoomDelta: 1 }).setView(c0, 15);
+  kaart = L.map("kaartvlak", { zoomControl: true, attributionControl: false, rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: false, bearing: 0, zoomSnap: 0, zoomDelta: 1 }).setView(c0, 15);
   // Zoomt de chauffeur zelf (+/− of knijpen), dan onthouden we dat als verschuiving t.o.v. de automatische
   // zoom: wie liever wat verder uitgezoomd rijdt, blijft dat ook bij het snelheidsgestuurd zoomen.
   kaart.on("zoomend", () => { if (performance.now() > _eigenZoomTot && _zoomAuto != null) _zoomExtra = Math.max(-3, Math.min(3, kaart.getZoom() - _zoomAuto)); });
+  // Knoppen uit het (kantelende) kaartvlak halen, met de leaflet-klassen (bv. leaflet-touch) erbij.
+  { const cc = kaart.getContainer().querySelector(".leaflet-control-container");
+    if (cc) { $("kaart").appendChild(cc); kaart.getContainer().classList.forEach(c => { if (c.startsWith("leaflet-") && c !== "leaflet-container") $("kaart").classList.add(c); }); } }
+  kaart.on("zoom zoomend", zetBaanBreedte);
   _tegels = tegelLaag().addTo(kaart);
   // Bij een enkel doel (ledige rit zonder getekende route) is er geen lijn, enkel het doelpunt.
-  if (!RIT.enkelDoel) laag = L.polyline(tekenPts(), { color: routeKleur(), weight: 9, opacity: 1 }).addTo(kaart);
+  // Brede baan zoals Waze: een donkere rand eronder en de route zelf zo breed als de weg (zie zetBaanBreedte).
+  if (!RIT.enkelDoel) {
+    randLaag = L.polyline(tekenPts(), { color: "#0b2a5b", weight: 13, opacity: .55, interactive: false, lineJoin: "round" }).addTo(kaart);
+    laag = L.polyline(tekenPts(), { color: routeKleur(), weight: 9, opacity: 1, lineJoin: "round" }).addTo(kaart);
+  }
   if (!ROT) laadRot();
-  gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .75 }).addTo(kaart);
+  gedaanLaag = L.polyline([], { color: "#8a8f98", weight: 9, opacity: .85, lineJoin: "round" }).addTo(kaart);
+  tekenPijlen();
+  zetKantel();
+  zetBaanBreedte();
   // Haltebolletjes wat groter (radius 11) en zonder vaste tekst op de kaart. De namen zitten in een
   // aparte laag die enkel verschijnt als de 🏷️-knop aanstaat.
   labelLaag = L.layerGroup(); _halteMk = [];
@@ -2224,6 +2246,7 @@ function maakKaart() {
     el.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
     el.title = volgModus ? "Volgmodus aan — tik om de kaart vrij te bewegen" : "Vrij bewegen — tik om weer te volgen";
     if (!volgModus) { if (_volgAnim != null) cancelAnimationFrame(_volgAnim); _volgAnim = null; _volgNu = null; } // bij uitzetten: lus stoppen, bij heraanzetten vers beginnen
+    zetKantel();
     if (volgModus && laatsteSnap) zetMarker();
   });
   volgKnop.classList.toggle("aan", !volgModus);   // blauw = vrij bewegen, grijs = volgen
@@ -2281,12 +2304,30 @@ function zoomVoorSnelheid(v) {
     const [v0, z0] = ZOOM_TABEL[i - 1], [v1, z1] = ZOOM_TABEL[i]; return z0 + (z1 - z0) * (v - v0) / (v1 - v0); }
   return ZOOM_TABEL[ZOOM_TABEL.length - 1][1];
 }
+// Gekanteld zie je verder maar kleiner: wat dichter inzoomen. En vlak voor een afslag of rotonde nog wat
+// dichter, zodat je de afslag goed ziet (± 150 m ervoor geleidelijk tot +0,45).
+let _afslagCache = { t: 0, v: 0 };
+function zoomBijKantelEnAfslag() {
+  const v = $("kaartvlak");
+  let extra = v && v.classList.contains("kantel") ? 0.8 : 0;
+  const nu = performance.now();
+  if (nu - _afslagCache.t > 500) {
+    let a = 0;
+    try {
+      const s = _volgNu && _volgNu.s != null ? _volgNu.s : (laatsteSnap && laatsteSnap.s);
+      const r = s != null && RIT && !RIT.enkelDoel ? navInstructie(s, 150) : null;
+      if (r && !r.rechtdoor && !r.einde && r.dist != null && r.dist < 150) a = 0.45 * (1 - Math.max(0, r.dist - 30) / 120);
+    } catch {}
+    _afslagCache = { t: nu, v: a };
+  }
+  return extra + _afslagCache.v;
+}
 // Geeft de zoom voor dit frame (en of hij nog beweegt).
 function volgZoom(dt) {
   if (_zoomModus !== "auto") { _zoomAuto = null; return kaart.getZoom(); }
   const v = _snelheid != null ? _snelheid : 0;
   _zoomSnel = _zoomSnel == null ? v : _zoomSnel + (v - _zoomSnel) * (1 - Math.exp(-dt / 4000));
-  const doel = zoomVoorSnelheid(_zoomSnel);
+  const doel = zoomVoorSnelheid(_zoomSnel) + zoomBijKantelEnAfslag();
   if (_zoomAuto == null) _zoomAuto = kaart.getZoom() - _zoomExtra;
   const verschil = doel - _zoomAuto;
   if (!_zoomBeweegt && Math.abs(verschil) > 0.25) _zoomBeweegt = true;   // dode zone: kleine schommelingen negeren
@@ -2370,13 +2411,14 @@ function startVolgAnim() {
     const ah = 1 - Math.exp(-dt / 350); // draaien: ±350 ms tijdconstante
     _volgNu.hoek = _hoekNaar(_volgNu.hoek, _volgDoel.hoek, ah);
     const z = volgZoom(dt);
+    const kantelt = kantelStap(dt);
     const mpp = 156543.03392 * Math.cos(_volgNu.lat * Math.PI / 180) / Math.pow(2, kaart.getZoom());
-    const vooruit = mpp * kaart.getSize().y * 0.3; // meter vooruit = ~30% van de schermhoogte (bus onderaan)
+    const vooruit = mpp * vooruitPx(); // bus onderaan, net boven de straatnaam
     if (marker) marker.setLatLng([_volgNu.lat, _volgNu.lon]);
     volgVerplaats(puntVanuit(_volgNu.lat, _volgNu.lon, _volgNu.hoek, vooruit), z, [_volgNu.lat, _volgNu.lon]);
     if (kaart.setBearing) { try { kaart.setBearing(-_volgNu.hoek); } catch {} }
     const dh = Math.abs(((_volgDoel.hoek - _volgNu.hoek + 540) % 360) - 180);
-    if (!rijdt && dh < 0.3 && !_zoomBeweegt && !kaart._animatingZoom) { _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
+    if (!rijdt && !kantelt && dh < 0.3 && !_zoomBeweegt && !kaart._animatingZoom) { _volgNu.hoek = _volgDoel.hoek; return; } // stilstand en richting bereikt: lus stoppen
     _volgAnim = requestAnimationFrame(stap);
   };
   _volgAnim = requestAnimationFrame(stap);
@@ -2412,6 +2454,7 @@ function richtHoek(s0) {
 function bolOpRouteMarge(sn) { return Math.min(140, Math.max(50, 1.5 * (sn.nauw || 0))); }
 function zetMarker() {
   if (!laatsteSnap) return;
+  zetStraatNu();
   // Rij je op de route (GPS binnen bolOpRouteMarge m van de lijn), dan staat de bol óp de routelijn, op je
   // positie langs de route: GPS schommelt een paar meter en anders zweeft de bol naast de weg. Wijk je
   // echt af (omleiding, nog op weg naar de start), dan staat hij op je echte locatie (mLat/mLon).
@@ -2500,10 +2543,89 @@ function tekenPts() {
   while (i < pts.length) uit.push(pts[i++]);
   return uit;
 }
+// Hoeveel kaartpixels het kaartmidden vóór de bus ligt, zodat de bus op het scherm ± BUS_ONDER px
+// boven de onderrand staat (net boven de straatnaam). Gekanteld rekenen we de perspectief terug.
+const BUS_ONDER = 66;
+function vooruitPx() {
+  const v = $("kaartvlak"), H = $("kaart").clientHeight || kaart.getSize().y;
+  const t = Math.min(BUS_ONDER, H * 0.4);
+  if (v && v.classList.contains("kantel")) {
+    const p = H * 1.7, a = _kantelHoek * Math.PI / 180;
+    const d = t * p / (p * Math.cos(a) - t * Math.sin(a));   // afstand van de onderrand in het (gekantelde) vlak
+    return kaart.getSize().y / 2 - d;
+  }
+  return kaart.getSize().y / 2 - t;
+}
+// Meter per schermpixel op de huidige zoom.
+function kaartMpp() {
+  const c = kaart.getCenter();
+  return 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, kaart.getZoom());
+}
+// Baan zo breed als een gewone weg (± 9 m), met minimum en maximum in pixels.
+function zetBaanBreedte() {
+  if (!kaart) return;
+  const w = Math.max(9, Math.min(46, 9 / kaartMpp()));
+  if (laag) laag.setStyle({ weight: w });
+  if (randLaag) randLaag.setStyle({ weight: w + 5 });
+  if (gedaanLaag) gedaanLaag.setStyle({ weight: w });
+  if (pijlLaag) pijlLaag.eachLayer(l => { if (l._pijl === "rand") l.setStyle({ weight: w * .55 + 4 }); else if (l._pijl === "steel") l.setStyle({ weight: w * .55 }); });
+}
+// Volgmodus: kaart gekanteld zoals Waze/Google Maps; vrij bewegen: plat (dan kloppen tikken en slepen).
+function zetKantel() {
+  const v = $("kaartvlak"); if (!v || !kaart) return;
+  const aan = !!volgModus;
+  if (v.classList.contains("kantel") === aan) return;
+  v.classList.toggle("kantel", aan);
+  if (aan) _kantelHoek = kantelDoel();
+  zetKantelTransform();
+  kaart.invalidateSize({ animate: false });
+}
+// Kantelhoek volgt de snelheid, zoals in Waze/Google Maps: stilstaand bijna plat (KANTEL_MIN), vanaf
+// ± 60 km/u het schuinst (KANTEL_MAX). Het kaartvlak is groot genoeg voor KANTEL_MAX.
+const KANTEL_MIN = 30, KANTEL_MAX = 38;   // hoger en de kaart reikt niet meer tot bovenaan het scherm
+let _kantelHoek = KANTEL_MIN;
+function kantelDoel() { return KANTEL_MIN + (KANTEL_MAX - KANTEL_MIN) * Math.min(1, Math.max(0, (_snelheid || 0) / 30)); }
+function zetKantelTransform() {
+  const v = $("kaartvlak"); if (!v) return;
+  const h = $("kaart").clientHeight || 700;
+  const aan = v.classList.contains("kantel");
+  v.style.transform = aan ? `perspective(${Math.round(h * 1.7)}px) rotateX(${_kantelHoek.toFixed(1)}deg)` : "";
+}
+// Per frame (volg-animatie) de hoek rustig naar het doel brengen; geeft true zolang hij nog beweegt.
+function kantelStap(dt) {
+  const v = $("kaartvlak"); if (!v || !v.classList.contains("kantel")) return false;
+  const doel = kantelDoel(), oud = _kantelHoek;
+  _kantelHoek += (doel - _kantelHoek) * (1 - Math.exp(-dt / 2500));
+  if (Math.abs(doel - _kantelHoek) < 0.1) _kantelHoek = doel;
+  if (Math.abs(_kantelHoek - oud) > 0.02) zetKantelTransform();
+  return _kantelHoek !== doel;
+}
+// Witte pijlen op de baan bij elke afslag en rotonde, zoals in navigatie-apps.
+function tekenPijlen() {
+  if (!kaart || !RIT || RIT.enkelDoel || !RIT.geo || !RIT.pts || RIT.pts.length < 3) return;
+  if (pijlLaag) kaart.removeLayer(pijlLaag);
+  pijlLaag = L.layerGroup().addTo(kaart);
+  const lijst = navLijst(0, 400);
+  for (const r of lijst) {
+    if (r.einde || r.at == null) continue;
+    const s0 = Math.max(0, r.at - 35), s1 = Math.min(RIT.geo.totaal, (r.rotonde && r.sUit != null ? r.sUit : r.at) + 16);
+    const steel = [];
+    for (let s = s0; s <= s1; s += 2) { const p = puntOpS(s); if (p) steel.push([p[0], p[1]]); }
+    if (steel.length < 3) continue;
+    const tip = steel[steel.length - 1], hk = koers360(puntOpS(s1 - 5), tip);
+    const top = puntVanuit(tip[0], tip[1], hk, 13), l = puntVanuit(tip[0], tip[1], hk - 90, 10), rr = puntVanuit(tip[0], tip[1], hk + 90, 10);
+    const kop = [l, top, rr];
+    const randL = L.polyline(steel, { color: "#0b2a5b", opacity: .6, weight: 8, lineCap: "butt", lineJoin: "round", interactive: false }); randL._pijl = "rand";
+    const st = L.polyline(steel, { color: "#fff", opacity: 1, weight: 4, lineCap: "butt", lineJoin: "round", interactive: false }); st._pijl = "steel";
+    pijlLaag.addLayer(randL).addLayer(st)
+      .addLayer(L.polygon(kop, { color: "#0b2a5b", weight: 2, opacity: .6, fillColor: "#fff", fillOpacity: 1, interactive: false }));
+  }
+  zetBaanBreedte();
+}
 async function laadRot() {
   if (ROT || _rotBezig) return; _rotBezig = true;
   try { const d = await haal("/gtfs/rotondes.json"); ROT = { r: d.r || [], m: d.m || [] }; } catch {}
-  if (ROT && laag && RIT && !RIT.enkelDoel) laag.setLatLngs(tekenPts()); // route mooi over de rotondes leggen
+  if (ROT && laag && RIT && !RIT.enkelDoel) { const tp = tekenPts(); laag.setLatLngs(tp); if (randLaag) randLaag.setLatLngs(tp); tekenPijlen(); } // route mooi over de rotondes leggen
   _rotBezig = false;
 }
 const rangTekst = n => n === 1 ? "1ste" : n + "de";
@@ -2679,6 +2801,31 @@ function navTekst(i) {
 }
 const navAfst = m => m < 20 ? "Nu" : m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
 // Geen haltenaam bij de afslagen (op vraag van de chauffeurs weggelaten).
+// Straat waar de bus nu rijdt, onderaan op de kaart.
+function zetStraatNu() {
+  const el = $("straatnu"); if (!el) return;
+  const zicht = $("kaart").style.display === "block" && laatsteSnap && !laatsteSnap.offRoute && laatsteSnap.s != null;
+  const n = zicht ? naamOp(laatsteSnap.s) : "";
+  el.classList.toggle("aan", !!n);
+  if (!n) el.dataset.n = "";
+  if (!n || el.dataset.n === n) return;
+  el.dataset.n = n;
+  el.innerHTML = `<span>${esc(n)}</span>`;
+  // Gecentreerd onder de bus en nooit over de snelheidsmeter links: is de naam te lang, dan korten we
+  // af (straat -> str., steenweg -> stwg.) en desnoods met "…".
+  const sp = el.firstElementChild, sm = $("snelmeter");
+  if (!sp || !sm) return;
+  const vrij = sm.getBoundingClientRect().right - el.getBoundingClientRect().left + 8;
+  const maxB = Math.max(130, el.clientWidth - 2 * vrij);
+  sp.style.maxWidth = maxB + "px";
+  // Stap voor stap korter: str./stwg./ln., dan voornamen als initiaal ("Georges Eeckoutstr." -> "G. Eeckoutstr.").
+  let k = n;
+  if (sp.scrollWidth > maxB) sp.textContent = k = k.replace(/steenweg\b/gi, "stwg.").replace(/straat\b/gi, "str.").replace(/laan\b/gi, "ln.");
+  if (sp.scrollWidth > maxB) { const w = k.split(" "); if (w.length > 1) sp.textContent = w.slice(0, -1).map(x => /^[A-ZÀ-Ý]/.test(x) ? x[0] + "." : x).join(" ") + " " + w[w.length - 1]; }
+  // Past het nog niet, dan schuift hij wat naar rechts (weg van de snelheidsmeter).
+  const links = el.clientWidth / 2 - sp.offsetWidth / 2;
+  sp.style.transform = links < vrij ? `translateX(${Math.round(vrij - links)}px)` : "";
+}
 function naamOp(s) {
   let naam = "";
   for (const [s0, n] of (RIT && RIT.namen) || []) { if (s0 <= s) naam = n; else break; }
@@ -2935,7 +3082,7 @@ $("menu").addEventListener("click", e => {
 $("menuSluit").onclick = menuSluit;
 $("menuOverzicht").onclick = () => { menuSluit(); toonOverzicht(); };
 $("menuTerug").onclick = () => { menuSluit(); stopGps(); clearInterval(window._rt); clearInterval(window._pt); _rwVerberg(); toon("setup"); vrijToonLaatste(); vrijLaadLijst(); };
-$("btnLijst").onclick = () => { $("lijstwrap").style.display = ""; $("kaart").style.display = "none"; $("volgstrip").style.display = ""; $("navbaan").classList.remove("aan"); $("snelmeter").classList.remove("aan"); $("btnLijst").setAttribute("aria-pressed", "true"); $("btnKaart").setAttribute("aria-pressed", "false"); };
+$("btnLijst").onclick = () => { $("lijstwrap").style.display = ""; $("kaart").style.display = "none"; $("volgstrip").style.display = ""; $("navbaan").classList.remove("aan"); $("snelmeter").classList.remove("aan"); $("straatnu").classList.remove("aan"); $("btnLijst").setAttribute("aria-pressed", "true"); $("btnKaart").setAttribute("aria-pressed", "false"); };
 $("btnKaart").onclick = () => { $("lijstwrap").style.display = "none"; $("kaart").style.display = "block"; $("volgstrip").style.display = "none"; $("snelmeter").classList.add("aan"); $("btnLijst").setAttribute("aria-pressed", "false"); $("btnKaart").setAttribute("aria-pressed", "true"); maakKaart(); setTimeout(() => kaart && kaart.invalidateSize(), 60); if (laatsteSnap) { zetMarker(); if (navAan) updateNavBanner(laatsteSnap.s); } };
 // Laatste halte van een rit (leeg of beladen) → over naar de volgende rit.
 function naarVolgendeVanLijst() {
