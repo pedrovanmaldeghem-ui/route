@@ -418,7 +418,8 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 .navtekst span{order:1;font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .navtekst b{order:2;font-size:30px;font-weight:800;color:var(--blauw);font-variant-numeric:tabular-nums}
 .navtekst small{order:3;font-size:13px;font-weight:600;color:#5a626e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.navtekst small:not(:empty)::before{content:"H";display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;background:#ffd200;color:#15181d;font-size:11px;font-weight:800;margin-right:5px;vertical-align:1px}
+.navtekst small{font-size:16px;font-weight:700;color:#344054}
+#rij.donker .navtekst small{color:#cfd6df}
 .navbaan .navvoort{position:absolute;left:78px;right:0;bottom:0;height:4px;background:transparent}
 .navbaan .navvoort i{display:block;height:100%;width:0;background:var(--oranje);transition:width .6s linear}
 .navbaan .navvolg{display:none}
@@ -426,7 +427,6 @@ body.donker .meldveld{background:#0b0e13; color:var(--tekst); border-color:var(-
 #rij.tcaan .navbaan{right:34px;width:min(420px,calc(100% - 106px))}
 #rij.donker .navbaan{background:var(--paneel);color:var(--tekst);border-color:var(--lijn)}
 #rij.donker .navtekst b{color:#6ab0e0}
-#rij.donker .navtekst small{color:var(--muted)}
 /* Lijst met de afslagen van de rit (tik op de navigatiekaart): paneel dat onderaan openschuift. */
 .navlijst{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.45);display:none;flex-direction:column;justify-content:flex-end}
 .navlijst.aan{display:flex}
@@ -1062,9 +1062,12 @@ async function bouwRit(row) {
     const mm = _toMin(s[3]); return mm != null ? _fmtMin(mm + off) : String(s[3] || "").slice(0, 5);
   };
   const halten = seg.map((s, i) => { const t = tijdVoor(s, i); return { tijd: t, naam: s[0], lat: s[1], lon: s[2], min: _toMin(t), id: s[4] != null ? String(s[4]) : null }; });
-  const pts = (m.v.pts || []).filter(p => p && p[0] != null).map(p => [p[0], p[1]]);
+  // "pm" = de vormlijn op het echte wegennet gelegd (scripts/kaartmatch.py), met straatnamen in "pn".
+  const opWeg = Array.isArray(m.v.pm) && m.v.pm.length > 1;
+  const pts = ((opWeg ? m.v.pm : m.v.pts) || []).filter(p => p && p[0] != null).map(p => [p[0], p[1]]);
   const geo = bouwGeo(halten, pts);
-  return { rit, d0, van, naar, vert, aankomst, halten, pts, geo, limieten: m.v.lim || null };
+  const namen = opWeg && Array.isArray(m.v.pn) ? m.v.pn.filter(x => geo.cum[x[0]] != null).map(x => [geo.cum[x[0]], x[1]]) : null;
+  return { rit, d0, van, naar, vert, aankomst, halten, pts, geo, namen, limieten: m.v.lim || null };
 }
 // Cumulatieve afstanden langs de vormlijn + de positie (meter langs route) van elke halte.
 function bouwGeo(halten, pts) {
@@ -2583,14 +2586,20 @@ function navInstructieRuw(s, ver) {
   for (let i = Math.max(1, ci + 1); i < pts.length - 1; i++) {
     if (rot && cum[i] > rot.sIn) break;   // de rotonde komt eerst
     if (ROT && inRot(cum[i])) continue;  // de bochten van een rotonde zelf zijn geen afslag
-    const a = xy(pts[i - 1]), b = xy(pts[i]), c = xy(pts[i + 1]);
+    // Op het wegennet gelegde route: veel dichte punten, een bocht is over meerdere punten verdeeld.
+    // Dan meten we de richting 12 m voor en 12 m na het punt, en telt een bocht pas als afslag als
+    // de straatnaam er verandert (of de bocht echt scherp is). Anders: rechtstreeks per vormpunt.
+    const opWeg = !!(RIT.namen && RIT.namen.length);
+    const a = xy(opWeg ? puntOpS(Math.max(0, cum[i] - 12)) : pts[i - 1]), b = xy(pts[i]),
+          c = xy(opWeg ? puntOpS(Math.min(totaal, cum[i] + 12)) : pts[i + 1]);
     const ix = b[0] - a[0], iy = b[1] - a[1], ox = c[0] - b[0], oy = c[1] - b[1];
     const inl = Math.hypot(ix, iy), onl = Math.hypot(ox, oy);
     if (inl < 4 || onl < 4) continue;
     const dot = (ix * ox + iy * oy) / (inl * onl);
     const cross = ix * oy - iy * ox;
     const ang = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
-    if (ang >= 32) {
+    const afslag = !opWeg ? ang >= 32 : (ang >= 70 || (ang >= 35 && naamOp(cum[i] - 20) !== naamOp(cum[i] + 20)));
+    if (afslag) {
       const dist = Math.max(0, cum[i] - s);
       if (dist > ver) break; // bocht te ver weg -> voorlopig rechtdoor
       if (!ROT) {
@@ -2670,7 +2679,19 @@ function navTekst(i) {
 }
 const navAfst = m => m < 20 ? "Nu" : m >= 1000 ? (m / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(m / 10) * 10 + " m";
 // Geen haltenaam bij de afslagen (op vraag van de chauffeurs weggelaten).
-const navBij = () => "";
+function naamOp(s) {
+  let naam = "";
+  for (const [s0, n] of (RIT && RIT.namen) || []) { if (s0 <= s) naam = n; else break; }
+  return naam;
+}
+// Straatnaam na de afslag (enkel als de route op het wegennet gelegd is).
+function navStraat(i) {
+  if (!i || i.einde || !RIT || !RIT.namen || !RIT.namen.length) return "";
+  const s = (i.rotonde && i.sUit != null ? i.sUit : i.at) + 15;
+  let naam = "";
+  for (const [s0, n] of RIT.namen) { if (s0 <= s) naam = n; else break; }
+  return naam;
+}
 let _navBegin = null;
 const NAV_VOLGEND = 0; // zoals Waze: enkel de huidige afslag; tik voor de volledige lijst
 function updateNavBanner(s) {
@@ -2685,7 +2706,7 @@ function updateNavBanner(s) {
   $("navpijl").innerHTML = navIcoon(instr);
   $("navafst").textContent = navAfst(dist);
   $("navtxt").textContent = navTekst(instr);
-  $("navbij").textContent = navBij(instr.at);
+  $("navbij").textContent = navStraat(instr);
   // Voortgangsbalk: hoeveel van de aanloop naar deze afslag al afgelegd is.
   if (!_navBegin || Math.abs(_navBegin.at - instr.at) > 3) _navBegin = { at: instr.at, d0: Math.max(dist, 1) };
   $("navvoort").style.width = Math.round(Math.max(0, Math.min(1, 1 - dist / _navBegin.d0)) * 100) + "%";
@@ -2705,8 +2726,8 @@ function updateNavBanner(s) {
 function vulNavLijst(s) {
   const ul = $("navlijstul"), lijst = s == null ? [] : navLijst(s);
   ul.innerHTML = lijst.map((i, k) => {
-    const bij = navBij(i.at);
-    return `<li class="${k === 0 ? "eerst" : ""}"><span class="navico">${navIcoon(i)}</span><div><span>${navTekst(i)}</span>${bij ? `<small>Halte ${bij}</small>` : ""}</div><b>${navAfst(Math.max(0, i.at - s))}</b></li>`;
+    const str = navStraat(i).replace(/[<>&]/g, "");
+    return `<li class="${k === 0 ? "eerst" : ""}"><span class="navico">${navIcoon(i)}</span><div><span>${navTekst(i)}</span>${str ? `<small>${str}</small>` : ""}</div><b>${navAfst(Math.max(0, i.at - s))}</b></li>`;
   }).join("") || `<li><div><span>Geen afslagen meer</span></div></li>`;
 }
 $("navlijst").onclick = (e) => { if (e.target === $("navlijst")) $("navlijst").classList.remove("aan"); };
