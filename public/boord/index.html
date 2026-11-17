@@ -2203,8 +2203,8 @@ const GlAchtergrond = L.Layer.extend({
     (async () => {
       try {
         if (!window.maplibregl) {
-          const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css"; document.head.appendChild(css);
-          await laadScript("https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js");
+          const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"; document.head.appendChild(css);
+          await laadScript("https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js");
         }
         if (!_glStijl) {
           const d = await (await fetch("https://tiles.openfreemap.org/styles/positron")).json();
