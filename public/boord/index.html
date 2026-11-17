@@ -274,6 +274,9 @@ body.donker #routewaar{background:#8b1d14}
    De route, haltebollen en live-bol zitten in aparte Leaflet-lagen en behouden hun echte kleuren. */
 #rij .leaflet-tile-pane{filter:brightness(var(--kaartlicht, 1))}
 .tegels-rustig{filter:saturate(.2) contrast(.8) brightness(1.06)}
+.tegels-grijs{filter:grayscale(1) contrast(.7) brightness(1.12)}
+.glkaart{position:absolute !important; left:0; top:0; width:100%; height:100%; z-index:0}
+.leaflet-container.metgl{background:#f2f2f0}
 #rij.donker .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(var(--kaartlicht, 1.2)) contrast(.95)}
 /* De basis is overdag wit; in donkere modus (nachtrijden) gaan ook de opstart-, pauze- en
    menuschermen terug naar donker, zodat er 's nachts niets fel wit oplicht. */
@@ -2164,18 +2167,107 @@ function stopPosDelen() { if (_posTimer) { clearInterval(_posTimer); _posTimer =
 // die dagelijks dezelfde routes rijdt, verbruikt zo na de eerste keer bijna geen data meer voor de kaart.
 // Bij een probleem (geen Cache API, offline, fout) valt elke tegel terug op gewoon rechtstreeks laden.
 // Kaartstijl (menu): gedetailleerd = gewone OpenStreetMap; rustig = dezelfde kaart met gedempte kleuren;
-// eenvoudig = de lichtgrijze Esri-kaart (enkel wegen, water en namen), zodat route en haltes opvallen.
-const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+// eenvoudig = dezelfde kaart in lichtgrijs, zodat route en haltes opvallen.
 const KAARTSTIJLEN = {
   osm: [{ url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19 }],
   rustig: [{ url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, klasse: "tegels-rustig" }],
-  grijs: [{ url: ESRI + "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", max: 19, nat: 16 },
-          { url: ESRI + "World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", max: 19, nat: 16 }],
+  // De lichtgrijze Esri-kaart gaat maar tot zoom 16; de boordcomputer zoomt verder in (tot 19), waardoor
+  // die tegels uitvergroot en korrelig werden. Daarom nu OpenStreetMap in lichtgrijs: scherp op elke zoom.
+  grijs: "gl",   // vectorkaart (OpenFreeMap, lichte stijl) met enkel straatnamen; zie glLaag
+
 };
 let _kaartStijl = "osm";
 try { const v = localStorage.getItem("lk-boord-kaartstijl"); if (KAARTSTIJLEN[v]) _kaartStijl = v; } catch {}
 let _tegels = null;
-function tegelLaag() { return L.layerGroup((KAARTSTIJLEN[_kaartStijl] || KAARTSTIJLEN.osm).map(eenTegelLaag)); }
+function tegelLaag() {
+  const st = KAARTSTIJLEN[_kaartStijl] || KAARTSTIJLEN.osm;
+  if (st === "gl") return glLaag();
+  return L.layerGroup(st.map(eenTegelLaag));
+}
+// Eenvoudige kaart: vectortegels van OpenFreeMap (gratis, zonder sleutel), getekend met MapLibre. Uit de
+// lichte "positron"-stijl laten we van alle tekst enkel de straatnamen over (geen haltes, winkels, plaatsen).
+// De bibliotheken worden pas geladen als deze stijl gekozen is. Lukt dat niet, dan gewone kaart in grijs.
+let _glStijl = null;
+function laadScript(src) { return new Promise((ok, nok) => { const e = document.createElement("script"); e.src = src; e.onload = ok; e.onerror = nok; document.head.appendChild(e); }); }
+// MapLibre tekent in een eigen laag onder de Leaflet-panes, in hetzelfde (kantelende) kaartvlak, en volgt
+// elke beweging van de Leaflet-kaart: midden, zoom (MapLibre telt 1 lager) en draaiing.
+const GlAchtergrond = L.Layer.extend({
+  onAdd(map) {
+    this._map = map;
+    const box = map.getContainer();
+    this._div = L.DomUtil.create("div", "glkaart");
+    box.insertBefore(this._div, box.firstChild);
+    box.classList.add("metgl");
+    map.on("move zoom rotate resize viewreset", this._sync, this);
+    map.on("zoomanim", this._anim, this);
+    (async () => {
+      try {
+        if (!window.maplibregl) {
+          const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css"; document.head.appendChild(css);
+          await laadScript("https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js");
+        }
+        if (!_glStijl) {
+          const d = await (await fetch("https://tiles.openfreemap.org/styles/positron")).json();
+          d.layers = d.layers.filter(l => l.type !== "symbol" || /^highway-name-(minor|major|path)$/.test(l.id));
+          glStijlAanpassen(d);
+          _glStijl = d;
+        }
+        if (!this._map) return; // intussen weggehaald
+        this._gl = new maplibregl.Map({ container: this._div, style: _glStijl, interactive: false, attributionControl: false, fadeDuration: 0, ...this._stand() });
+        this._sync();
+      } catch {
+        // Geen vectorkaart mogelijk: gewone kaart in lichtgrijs als terugval.
+        if (this._map) { this._terug = eenTegelLaag({ url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", max: 19, klasse: "tegels-grijs" }).addTo(this._map); }
+      }
+    })();
+  },
+  onRemove(map) {
+    map.off("move zoom rotate resize viewreset", this._sync, this);
+    map.off("zoomanim", this._anim, this);
+    if (this._gl) { try { this._gl.remove(); } catch {} }
+    if (this._terug) map.removeLayer(this._terug);
+    this._div.remove(); map.getContainer().classList.remove("metgl");
+    this._gl = this._terug = this._map = null;
+  },
+  _stand(c, z) {
+    const m = this._map; c = c || m.getCenter(); z = z ?? m.getZoom();
+    return { center: [c.lng, c.lat], zoom: z - 1, bearing: m.getBearing ? -m.getBearing() : 0 };
+  },
+  _sync() {
+    if (!this._gl) return;
+    const w = this._div.clientWidth, h = this._div.clientHeight;
+    if (this._w !== w || this._h !== h) { this._w = w; this._h = h; this._gl.resize(); }
+    this._gl.jumpTo(this._stand());
+  },
+  _anim(e) { if (this._gl) this._gl.easeTo({ ...this._stand(e.center, e.zoom), duration: 250, easing: t => t }); },
+});
+function glLaag() { return new GlAchtergrond(); }
+// De standaard lichte stijl is erg flets: wegen iets breder en witter op een iets donkerdere ondergrond,
+// en de straatnamen groter en donkerder, zodat ze in de bus leesbaar zijn.
+function glStijlAanpassen(d) {
+  const breed = (a, b) => ["interpolate", ["exponential", 1.6], ["zoom"], 13, a, 18, b];
+  for (const l of d.layers) {
+    const p = l.paint = l.paint || {}, y = l.layout = l.layout || {};
+    if (l.id === "background") p["background-color"] = "#e8eae7";
+    else if (l.id === "landuse_residential") p["fill-color"] = "#e3e4e0";
+    else if (l.id === "building") { p["fill-color"] = "#dcdcd8"; p["fill-outline-color"] = "#d0d0cc"; }
+    else if (l.id === "highway_minor") { p["line-color"] = "#ffffff"; p["line-width"] = breed(1.5, 22); }
+    else if (l.id === "highway_path") { p["line-color"] = "#f6f6f4"; p["line-width"] = breed(0.8, 6); }
+    else if (l.id === "highway_major_inner") { p["line-color"] = "#ffffff"; p["line-width"] = breed(3, 30); }
+    else if (l.id === "highway_major_casing") { p["line-color"] = "#c8ccd0"; p["line-width"] = breed(4, 34); }
+    else if (/^highway-name-/.test(l.id)) {
+      y["text-size"] = ["interpolate", ["linear"], ["zoom"], 13, 12, 16, 15, 18, 17];
+      // In Brussel en de faciliteitengemeenten is "name" tweetalig ("Stooktstraat - Rue de l'Étoile"): te lang
+      // voor korte straatjes, dan valt het label weg. Daarom eerst de Nederlandse naam.
+      var nm = ["coalesce", ["get", "name:nl"], ["get", "name"], ""];
+      // Tweetalige namen ("X - Rue Y"): enkel het Nederlandse deel tonen.
+      y["text-field"] = ["let", "n", nm, ["let", "i", ["index-of", " - ", ["var", "n"]],
+        ["case", [">", ["var", "i"], 0], ["slice", ["var", "n"], 0, ["var", "i"]], ["var", "n"]]]];
+      y["symbol-spacing"] = 180;
+      p["text-color"] = "#3a3f45"; p["text-halo-color"] = "rgba(255,255,255,.9)"; p["text-halo-width"] = 1.5;
+    }
+  }
+}
 function eenTegelLaag(st) {
   const laag = L.tileLayer(st.url, { maxZoom: st.max, maxNativeZoom: st.nat || st.max, className: st.klasse || "", crossOrigin: true, attribution: "© OpenStreetMap, © Esri" });
   laag.createTile = function (coords, done) {
